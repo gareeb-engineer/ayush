@@ -4,13 +4,13 @@ site:
 
 content:
   sources:
-    - url: ./portfolio-anotra/gareeb-engineer
+    - url: .
       branches: HEAD
-
+      start_path: ./gareeb-engineer/
 ui:
   bundle:
     url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
     snapshot: true
 
 output:
-  dir: ./mysite
+  dir: ./build-output

@@ -1,2 +1,3 @@
-= Welcome to My Docs
-This is your homepage.
+= Welcome to My Docs YOUR COMPONENT-A
+
+This is your YOUR COMPONENT-A documentation.

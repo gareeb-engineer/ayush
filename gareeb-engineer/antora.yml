@@ -1,0 +1,7 @@
+name: gareeb-engineer
+title: Gareeb Engineer
+version: v1.0
+display_version: 'dev'
+start_page: ROOT:index.adoc
+nav:
+- modules/Component-A/nav.adoc
