@@ -1,10 +1,10 @@
 site:
   title: Ayush Nigam
-  start_page: my-docs::index.adoc
+  start_page: gareeb-engineer::index.adoc
 
 content:
   sources:
-    - url: ./gareeb-engineer
+    - url: ./portfolio-anotra/gareeb-engineer
       branches: HEAD
 
 ui:
