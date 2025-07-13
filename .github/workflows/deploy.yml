@@ -3,7 +3,7 @@ name: Build Antora Documentation
 on:
   push:
     branches:
-      - main  # or the branch where Antora docs are maintained
+      - anotra  # or the branch where Antora docs are maintained
 
 jobs:
   build-antora:
