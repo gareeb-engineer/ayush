@@ -3,8 +3,8 @@
 cd build-output
 echo "Current directory: $(pwd)"
 git init
-# git config user.name "GitHub Actions"
-# git config user.email "actions@github.com"
+git config user.name "github-actions[bot]"
+git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 git remote add origin https://github.com/gareeb-engineer/ayush.git
 
 #adding .nojekyll to prevent Jekyll processing i.e. github should not ignore "_" folder
