@@ -38,12 +38,36 @@ jobs:
         run: |
            antora --generator @antora/site-generator-default antora-playbook.yml
 
-      - name: Run setup.sh script
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Run setup.sh script
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: |
+      #     chmod +x .github/workflows/setup.sh
+      #     .github/workflows/setup.sh
+
+      - name: Run the deploy sc
         run: |
-          chmod +x .github/workflows/setup.sh
-          .github/workflows/setup.sh
+          cd build-output
+          echo "Current directory: $(pwd)"
+          git init
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          
+          git remote add origin https://${ secrets.GITHUB_TOKEN }@github.com/${ github.repository }.git
+
+          #adding .nojekyll to prevent Jekyll processing i.e. github should not ignore "_" folder
+          echo "Adding .nojekyll to prevent Jekyll"
+          touch .nojekyll
+          git add .
+          echo "Files to be committed:"
+          git commit -m "Deploy Antora site"
+
+          #Modify the branch name to 'deploy'
+          git branch -M deploy
+
+          echo "Pushing to remote repository..."
+          git push -f origin deploy
+
 
       - name: Echo message
         run: echo "Antora documentation build completed successfully."
