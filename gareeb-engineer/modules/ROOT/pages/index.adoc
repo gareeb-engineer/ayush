@@ -1,3 +1,5 @@
-= Welcome to My Docs FORM ROOT.
+[.text-center]
+= Ayush Nigam
 
-This is your homepage FORM ROOT.
+[.text-center]
+DevOps Engineer | Troubleshooting Infrastructure | CI/CD | AWS | Kubernetes | Terraform | Linux
