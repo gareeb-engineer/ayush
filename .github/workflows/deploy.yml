@@ -26,6 +26,13 @@ jobs:
         run: |
           npm install -g @antora/cli @antora/site-generator-default
 
+      - name: List files in the current directory
+        run: |
+          ls -la
+
+      - name: PWD
+        run: pwd
+
       # Step 4: Build the Antora site
       - name: Build Antora site
         run: |
