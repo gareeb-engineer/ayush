@@ -1,0 +1,40 @@
+name: Build Antora Documentation
+
+on:
+  push:
+    branches:
+      - main  # or the branch where Antora docs are maintained
+
+jobs:
+  build-antora:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 'antora' branch
+        uses: actions/checkout@v4
+        with:
+          ref: anotra
+          fetch-depth: 1  # (optional) default, fetches only latest commit
+
+      # Step 2: Setup Node.js (required for Antora)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Step 3: Install Antora CLI and site generator
+      - name: Install Antora
+        run: |
+          npm install -g @antora/cli @antora/site-generator-default
+
+      # Step 4: Build the Antora site
+      - name: Build Antora site
+        run: |
+          antora antora-playbook.yml
+
+      - name: Run setup.sh script
+        run: |
+          chmod +x .github/workflows/setup.sh
+          .github/workflows/setup.sh
+
+      - name: Echo message
+        run: echo "Antora documentation build completed successfully."
