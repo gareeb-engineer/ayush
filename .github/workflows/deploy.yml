@@ -39,6 +39,8 @@ jobs:
            antora --generator @antora/site-generator-default antora-playbook.yml
 
       - name: Run setup.sh script
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           chmod +x .github/workflows/setup.sh
           .github/workflows/setup.sh
