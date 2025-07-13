@@ -1,6 +1,7 @@
 site:
   title: Ayush Nigam
   start_page: gareeb-engineer::index.adoc
+  url: https://gareeb-engineer.github.io/ayush
 
 content:
   sources:
