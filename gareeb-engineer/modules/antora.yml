@@ -1,7 +1,7 @@
-name: my-docs
-title: Software Engineering
-version: 1.0
-nav:
-  - modules/ROOT/nav.adoc
-  - modules/Component-A/nav.adoc
-  - module/Arcitecture-diagram/nav.adoc
+# name: my-docs
+# title: Software Engineering
+# version: 1.0
+# nav:
+#   - modules/ROOT/nav.adoc
+#   - modules/Component-A/nav.adoc
+#   - module/Arcitecture-diagram/nav.adoc
