@@ -10,4 +10,4 @@ touch .nojekyll
 git add .
 git commit -m "Deploy Antora site"
 git branch -M deploy
-#git push -f origin deploy
+git push -f origin deploy
