@@ -3,3 +3,5 @@
 
 [.text-center]
 DevOps Engineer | Troubleshooting Infrastructure | CI/CD | AWS | Kubernetes | Terraform | Linux
+
+image::banner.png[Ayush Nigam's Banner]
