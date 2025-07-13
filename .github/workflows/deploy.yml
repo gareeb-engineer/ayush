@@ -36,7 +36,7 @@ jobs:
       # Step 4: Build the Antora site
       - name: Build Antora site
         run: |
-          antora antora-playbook.yml
+           antora --generator @antora/site-generator-default antora-playbook.yml
 
       - name: Run setup.sh script
         run: |
