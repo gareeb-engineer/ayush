@@ -5,4 +5,6 @@ display_version: 'dev'
 start_page: ROOT:index.adoc
 nav:
 - modules/Component-A/nav.adoc
+- modules/Java/nav.adoc
 - modules/Arcitecture-diagram/nav.adoc
+- modules/DevOps-Refs/nav.adoc
