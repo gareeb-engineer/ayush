@@ -1,2 +1,8 @@
 # This is the index page for the Data Structure module.
 = Data Structure dynamic Programming
+
+
+[.lead]
+*Contents*
+
+include::nav$nav.adoc[]
