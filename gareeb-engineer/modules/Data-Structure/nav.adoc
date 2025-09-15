@@ -3,7 +3,7 @@
 ** xref:linked-list/index.adoc[Linked Lists]
 ** xref:stacks-n-queue/index.adoc[Stacks]
 ** xref:trees/index.adoc[Trees]
-** xref:hash-map/index.adoc[Hashing]
+** xref:hash-map/index.adoc[Hash Map]
 ** xref:dynamic-programming/index.adoc[Dynamic Programming]
 ** xref:graphs/index.adoc[Graphs]
 ** xref:backtracking/index.adoc[Backtracking]
