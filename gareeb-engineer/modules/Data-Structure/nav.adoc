@@ -10,3 +10,4 @@
 ** xref:pattern-printing/index.adoc[Pattern Printing]
 ** xref:recursion/index.adoc[Recursion]
 *** xref:recursion/sum-of-all-element.adoc[Sum of all elements]
+*** xref:recursion/all-indices-of-array.adoc[All indices of array]
