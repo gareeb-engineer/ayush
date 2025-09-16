@@ -1,4 +1,4 @@
-= Data Structure (Table of Contents)
+= Data Structure (Table of Content's)
 
 [.lead]
 *Contents*
