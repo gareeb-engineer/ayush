@@ -6,5 +6,7 @@ start_page: ROOT:index.adoc
 nav:
 - modules/Java/nav.adoc
 - modules/Arcitecture-diagram/nav.adoc
-- modules/Data-Structure/nav.adoc
 - modules/DevOps-Refs/nav.adoc
+- modules/System-design/nav.adoc
+- modules/AI/nav.adoc
+- modules/WorkExperience/nav.adoc
