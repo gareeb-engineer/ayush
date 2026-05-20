@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>☕ Java&#8217;s Invisible Engine: Garbage Collection (GC) 🗑️ :: Ayush Nigam</title>
+    <link rel="canonical" href="https://gareeb-engineer.github.io/ayush/gareeb-engineer/v1.0/Java/index.html">
+    <meta name="generator" content="Antora 3.1.14">
+    <link rel="stylesheet" href="../../../_/css/site.css">
+  </head>
+  <body class="article">
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="https://gareeb-engineer.github.io/ayush">Ayush Nigam</a>
+      <button class="navbar-burger" aria-controls="topbar-nav" aria-expanded="false" aria-label="Toggle main menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+    <div id="topbar-nav" class="navbar-menu">
+      <div class="navbar-end">
+        <a class="navbar-item" href="#">Home</a>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Products</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Product A</a>
+            <a class="navbar-item" href="#">Product B</a>
+            <a class="navbar-item" href="#">Product C</a>
+          </div>
+        </div>
+        <div class="navbar-item has-dropdown is-hoverable">
+          <a class="navbar-link" href="#">Services</a>
+          <div class="navbar-dropdown">
+            <a class="navbar-item" href="#">Service A</a>
+            <a class="navbar-item" href="#">Service B</a>
+            <a class="navbar-item" href="#">Service C</a>
+          </div>
+        </div>
+        <div class="navbar-item">
+          <span class="control">
+            <a class="button is-primary" href="#">Download</a>
+          </span>
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>
+<div class="body">
+<div class="nav-container" data-component="gareeb-engineer" data-version="v1.0">
+  <aside class="nav">
+    <div class="panels">
+<div class="nav-panel-menu is-active" data-panel="menu">
+  <nav class="nav-menu">
+    <button class="nav-menu-toggle" aria-label="Toggle expand/collapse all" style="display: none"></button>
+    <h3 class="title"><a href="../index.html">Gareeb Engineer</a></h3>
+<ul class="nav-list">
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item is-current-page" data-depth="1">
+    <a class="nav-link" href="index.html">Garbage Collection</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="../Arcitecture-diagram/index.html">Architecture Diagram&#8217;s</a>
+  </li>
+</ul>
+  </li>
+  <li class="nav-item" data-depth="0">
+<ul class="nav-list">
+  <li class="nav-item" data-depth="1">
+    <a class="nav-link" href="../DevOps-Refs/index.html">References</a>
+  </li>
+</ul>
+  </li>
+</ul>
+  </nav>
+</div>
+<div class="nav-panel-explore" data-panel="explore">
+  <div class="context">
+    <span class="title">Gareeb Engineer</span>
+    <span class="version">dev</span>
+  </div>
+  <ul class="components">
+    <li class="component is-current">
+      <div class="title"><a href="../index.html">Gareeb Engineer</a></div>
+      <ul class="versions">
+        <li class="version is-current is-latest">
+          <a href="../index.html">dev</a>
+        </li>
+      </ul>
+    </li>
+  </ul>
+</div>
+    </div>
+  </aside>
+</div>
+<main class="article">
+<div class="toolbar" role="navigation">
+<button class="nav-toggle"></button>
+  <a href="../index.html" class="home-link"></a>
+<nav class="breadcrumbs" aria-label="breadcrumbs">
+  <ul>
+    <li><a href="../index.html">Gareeb Engineer</a></li>
+    <li><a href="index.html">Garbage Collection</a></li>
+  </ul>
+</nav>
+<div class="edit-this-page"><a href="https://github.com/gareeb-engineer/ayush/edit/anotra/gareeb-engineer/modules/Java/pages/index.adoc">Edit this Page</a></div>
+</div>
+  <div class="content">
+<aside class="toc sidebar" data-title="Contents" data-levels="2">
+  <div class="toc-menu"></div>
+</aside>
+<article class="doc">
+<h1 class="page">☕ Java&#8217;s Invisible Engine: Garbage Collection (GC) 🗑️</h1>
+<div id="preamble">
+<div class="sectionbody">
+<div class="imageblock">
+<div class="content">
+<img src="_images/Garbage-Collection.png" alt="GC Picture">
+</div>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_evolution_of_modern_memory_management"><a class="anchor" href="#_evolution_of_modern_memory_management"></a>🌱 Evolution of Modern Memory Management</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>✨ One of the biggest performance wins without rewriting code — just by <strong>UPGRADE!</strong> 🚀</p>
+</div>
+<div class="paragraph">
+<p>🧹 Memory management is not only cleanup but also <strong>reclaim &amp; allocation</strong> of new memory.
+⚖️ The real magic of modern GC lies in balancing these two opposing jobs.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_generational_hypothesis"><a class="anchor" href="#_generational_hypothesis"></a>🧬 Generational Hypothesis</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>📌 Most objects don’t live long.
+🧒 Objects are divided into <strong>Young Generation</strong> and 👴 <strong>Old Generation</strong>.
+👉 Most cleanup efforts focus on the <strong>Young area</strong>.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_choices_of_gc"><a class="anchor" href="#_choices_of_gc"></a>🔥 Choices of GC</h2>
+<div class="sectionbody">
+<div class="ulist">
+<ul>
+<li>
+<p>1️⃣ <strong>Serial</strong> – 🖥️ Low memory footprint, works well with single-CPU containers.</p>
+</li>
+<li>
+<p>2️⃣ <strong>Parallel</strong> – ⚡ Best for max throughput (batch operations).</p>
+</li>
+<li>
+<p>3️⃣ <strong>G1</strong> – ⚖️ Balanced approach, default since JDK9.</p>
+</li>
+<li>
+<p>4️⃣ <strong>ZGC</strong> – 🏎️ Ultra low latency for huge heaps &amp; sensitive services.</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_which_gc_is_best"><a class="anchor" href="#_which_gc_is_best"></a>🤔 Which GC is Best?</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>It depends on requirements vs trade-offs ⚖️</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p>⏱️ <strong>Throughput</strong> → Total work done over time (e.g., batch job)</p>
+</li>
+<li>
+<p>⚡ <strong>Latency</strong> → Responsiveness of operations</p>
+</li>
+<li>
+<p>📦 <strong>Footprint</strong> → Memory overhead of GC (e.g., containers)</p>
+</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_outcome"><a class="anchor" href="#_outcome"></a>📊 Outcome</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>📈 Upgrading <strong>JDK8 ➝ JDK24</strong>:
+- 🚀 Parallel &amp; G1: <strong>25% throughput improvement</strong>
+- ⏳ Latency score improved by <strong>50% (Parallel)</strong>, and <strong>100%</strong> overall
+- 💾 G1 in JDK24 uses <strong>1/3rd the memory</strong> compared to JDK8</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_case_studies"><a class="anchor" href="#_case_studies"></a>🏢 Case Studies</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>🎬 <strong>Netflix</strong> – Cut pause times in half with JDK17 (G1), then tested JDK31 with Generation Collector.
+💼 <strong>LinkedIn</strong> – JDK24 upgrade → <strong>50% lower P99.9 latency</strong> with ZGC.
+☁️ <strong>Oracle Cloud</strong> – 20% throughput boost after moving to JDK17.</p>
+</div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_takeaway"><a class="anchor" href="#_takeaway"></a>⚡ Takeaway</h2>
+<div class="sectionbody">
+<div class="paragraph">
+<p>Modern GC isn’t just cleanup — it’s the invisible performance engine powering today’s services 🚀🔥</p>
+</div>
+</div>
+</div>
+</article>
+  </div>
+</main>
+</div>
+<footer class="footer">
+  <p>This page was built using the Antora default UI.</p>
+  <p>The source code for this UI is licensed under the terms of the MPL-2.0 license.</p>
+</footer>
+<script id="site-script" src="../../../_/js/site.js" data-ui-root-path="../../../_"></script>
+<script async src="../../../_/js/vendor/highlight.js"></script>
+  </body>
+</html>
