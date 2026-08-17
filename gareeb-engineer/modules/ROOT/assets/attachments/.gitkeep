@@ -1,0 +1,6 @@
+# Attachments Directory
+
+Place your resume PDF here as: Ayush_Nigam_Resume.pdf
+
+This file is referenced by the Contact page and Homepage resume download link.
+The path used in AsciiDoc is: {attachmentsdir}/Ayush_Nigam_Resume.pdf

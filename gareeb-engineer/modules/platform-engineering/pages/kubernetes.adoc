@@ -1,0 +1,74 @@
+= Kubernetes Operations
+:page-role: engineering
+:description: Production Kubernetes operations patterns — scheduling, networking, storage, and troubleshooting from real EKS clusters running stateful and stateless workloads
+:keywords: Kubernetes, EKS, scheduling, resource management, networking, storage, RBAC, troubleshooting, OOMKilled, PVC, node affinity
+
+[.lead]
+_Running Kubernetes is easy. Running it well in production — where pods get evicted at 3 AM and PVCs refuse to bind — is where the engineering lives._
+
+== Overview
+
+This page covers operational patterns for production Kubernetes clusters. Not "what is a pod" territory — this is about keeping clusters healthy under real load, managing noisy neighbors, and debugging failures that don't show up in tutorials.
+
+Focus areas: resource governance, scheduling precision, network segmentation, and the troubleshooting muscle memory that comes from operating EKS clusters with mixed stateful/stateless workloads.
+
+== Key Patterns
+
+=== Pattern 1: Right-Sizing Requests and Limits
+
+The #1 source of production drama. Requests too low = scheduling lies to the kubelet. Limits too tight = OOMKilled under burst. The sweet spot:
+
+* Set *requests* based on P95 steady-state usage (not average — averages lie)
+* Set *limits* at 1.5-2x requests for CPU (burstable), equal to requests for memory (non-compressible)
+* Use VPA in recommendation-only mode to track drift over weeks before trusting it
+* Guaranteed QoS class for critical workloads (requests == limits) — never get evicted first
+
+The real lesson: right-sizing is not a one-time exercise. Traffic patterns shift, JVM heaps grow, and that "small sidecar" someone added now eats 200Mi.
+
+=== Pattern 2: Pod Disruption Budgets and Graceful Lifecycle
+
+PDBs are the difference between "zero-downtime upgrade" and "we lost quorum during node drain":
+
+* Always define PDBs for stateful workloads — `minAvailable: 2` for a 3-replica Patroni cluster
+* Pair PDBs with `preStop` hooks for graceful shutdown (especially for connection-draining)
+* Node upgrades without PDBs will eventually kill your leader pod at the worst time
+
+=== Pattern 3: Node Affinity and Topology Spread
+
+Spread constraints prevent "all replicas on one node" disasters:
+
+* Use `topologySpreadConstraints` with `maxSkew: 1` across zones for HA
+* Use `nodeAffinity` to pin GPU/high-memory workloads to appropriate instance types
+* Anti-affinity between replicas of the same service — `podAntiAffinity` with `topologyKey: kubernetes.io/hostname`
+
+=== Pattern 4: Network Policies as Default-Deny
+
+In multi-tenant clusters, assume breach. Network policies are your blast-radius limiter:
+
+* Start with default-deny ingress/egress per namespace
+* Explicitly allow only required flows (app → database, ingress → app)
+* Label-based selectors over IP ranges — IPs change, labels are intentional
+
+== Production Considerations
+
+*Resource contention*: When nodes hit memory pressure, kubelet evicts pods by QoS class (BestEffort first, then Burstable). If your critical services are Burstable with low requests, they're eviction candidates. Set Guaranteed QoS for anything that must survive pressure events.
+
+*Scheduling failures at scale*: With 50+ node pools, `Unschedulable` events multiply. Common root cause: resource fragmentation — plenty of total cluster capacity, but no single node has enough contiguous resources. Solution: right-size node pools, use `Cluster Autoscaler` priority expanders, and monitor pending pod age.
+
+*EKS-specific*: ENI limits cap pod density per node. A `m5.large` gets 29 IPs max. Hit this ceiling with dense microservice deployments? Use prefix delegation or switch to `m5.xlarge`. Calculate before you deploy 40 pods to a node that supports 29.
+
+== Troubleshooting
+
+*OOMKilled (exit code 137)*: Check `kubectl describe pod` for Last State. If limits are set, the container exceeded them. If no limits, the node ran out. Fix: increase memory limit or find the leak (heap dumps for JVM, `/proc/meminfo` for native).
+
+*Node NotReady*: Usually kubelet lost contact with API server. Check `systemctl status kubelet`, look for certificate expiry, disk pressure (`df -h` on node), or clock skew (NTP issues in air-gapped envs).
+
+*PVC Pending*: Three causes — (1) no matching StorageClass, (2) zone mismatch (PV in us-east-1a, pod scheduled to us-east-1b), (3) capacity exhausted. For EBS: check AWS volume limits per node.
+
+*ImagePullBackOff*: In private registries, check `imagePullSecrets` on the ServiceAccount. In air-gapped environments, verify the image exists in your mirror registry and the tag hasn't been garbage-collected.
+
+== Related
+
+* xref:case-studies:kubernetes-platform.adoc[Case Study: Air-Gapped Kubernetes Platform]
+* xref:architecture:kubernetes-architecture.adoc[Kubernetes Platform Architecture]
+* xref:reliability:troubleshooting.adoc[Kubernetes Troubleshooting Journal]

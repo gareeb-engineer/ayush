@@ -1,0 +1,22 @@
+Url shorther
+
+Rate limiter (https://www.youtube.com/watch?v=MIJFyUPG4Z4)
+
+Caching in system design (https://www.youtube.com/watch?v=1NngTUYPdpI)
+
+
+Core Concepts in System Design:
+
+API Design in System Design (https://www.youtube.com/watch?v=DQ57zYedMdQ)
+
+Data Modeling article[https://www.hellointerview.com/learn/system-design/core-concepts/data-modeling]
+
+Sharding (https://www.youtube.com/watch?v=L521gizea4s)
+
+Consistent Hashing article[https://www.hellointerview.com/learn/system-design/core-concepts/consistent-hashing]
+
+CAP Theorem article[https://www.hellointerview.com/learn/system-design/core-concepts/cap-theorem]
+
+Database Indexing article[https://www.hellointerview.com/learn/system-design/core-concepts/db-indexing]
+
+Numbers to Know article[https://www.hellointerview.com/learn/system-design/core-concepts/numbers-to-know]

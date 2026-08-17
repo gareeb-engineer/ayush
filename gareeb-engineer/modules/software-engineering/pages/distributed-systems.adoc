@@ -1,0 +1,78 @@
+= Distributed Systems Engineering
+:page-role: engineering
+:description: Distributed systems patterns — consistency models, Kafka architecture, caching strategies, and failure mode analysis for production services
+:keywords: distributed systems, Kafka, consistency, eventual consistency, caching, event sourcing, idempotency, failure modes, exactly-once, cache-aside
+
+[.lead]
+_Every distributed system is a bet that the network will behave. Production teaches you how often you lose that bet — and how to design for it._
+
+== Overview
+
+Distributed systems aren't a choice — the moment you have two services talking over a network, you're in the business. This page covers the patterns that keep distributed services correct and available: choosing the right consistency model, making Kafka do what you actually need, caching without serving stale data at the worst time, and designing for the failures that will happen.
+
+== Key Patterns
+
+=== Pattern 1: Idempotency in Distributed Operations
+
+Network partitions, retries, and at-least-once delivery mean every operation will eventually be delivered more than once. Idempotency is not optional:
+
+* **Natural Idempotency**: `SET balance = 500` is idempotent. `SET balance = balance + 50` is not. Prefer absolute state over relative deltas where possible.
+* **Idempotency Keys**: Client generates a UUID per logical operation. Server stores key → result mapping. On duplicate, return cached result without re-executing.
+* **Database-Level**: Use `INSERT ... ON CONFLICT DO NOTHING` or conditional updates with version columns. Cheaper than application-level deduplication for simple cases.
+* **Kafka Consumer Idempotency**: Store `(topic, partition, offset)` alongside business state in the same transaction. On restart, skip already-processed offsets.
+* **Time Window**: Don't store idempotency keys forever. 24-72 hours covers most retry scenarios. Use TTL-based eviction.
+
+=== Pattern 2: Event Sourcing vs. CRUD Trade-offs
+
+Not every service needs event sourcing. Choose based on actual requirements:
+
+**Event Sourcing — When It Pays Off**:
+
+* Complete audit trail is a business requirement (financial transactions, compliance).
+* You need temporal queries ("what was the state at time T?").
+* Multiple consumers need different projections of the same data.
+* Trade-off: Read path requires projections (eventual consistency), snapshots needed for long event streams, schema evolution is painful.
+
+**CRUD — When It's Enough**:
+
+* Simple domain, no audit requirements beyond "who changed what."
+* Low write concurrency, no need for event replay.
+* Team is small and doesn't need the operational complexity of event stores.
+* Trade-off: History is lost, harder to add new derived views retroactively.
+
+**Hybrid Approach**: CRUD for the primary data store + CDC (Change Data Capture) via Debezium to publish events for downstream consumers. Get event-driven integration without event-sourced internals.
+
+=== Pattern 3: Kafka Architecture for Reliability
+
+Kafka is not a queue — misusing it as one causes most production issues:
+
+* **Partitioning Strategy**: Partition by business key (order ID, user ID) for ordering guarantees within a partition. Random partitioning for pure throughput when ordering doesn't matter.
+* **Consumer Group Design**: One consumer group per logical application. Don't share groups across unrelated consumers — rebalancing affects all members.
+* **Exactly-Once Semantics**: Enable `idempotence=true` on producer + `isolation.level=read_committed` on consumer + transactional producer for produce-consume-produce flows. Heavy — use only where correctness demands it.
+* **Dead Letter Topics**: Failed messages after N retries go to DLT. Monitor DLT lag — growing backlog means systematic processing failure, not transient errors.
+* **Retention vs. Compaction**: Time-based retention for event streams (7-30 days). Log compaction for state snapshots (keep latest per key indefinitely).
+
+== Production Considerations
+
+* **Consistency Model Selection**: Strong consistency (synchronous replication, distributed locks) when money or safety is involved. Eventual consistency for everything else — user profiles, notification preferences, analytics. The cost of strong consistency is availability and latency.
+* **Caching Strategies**:
+** **Cache-Aside**: Application reads cache first, falls back to DB on miss, populates cache. Simple but vulnerable to thundering herd on cold cache.
+** **Write-Through**: Write to cache and DB atomically. Consistent but adds write latency.
+** **TTL Design**: Short TTL (30s-5min) for frequently-changing data. Long TTL (hours) for reference data. No TTL is a memory leak.
+* **Failure Modes to Design For**:
+** **Network Partition**: Services can't reach each other. Circuit breakers open, serve cached/degraded responses.
+** **Split Brain**: Two leaders in a distributed system. Use fencing tokens and leader leases with TTL.
+** **Clock Skew**: Don't rely on wall-clock ordering across services. Use logical clocks (vector clocks) or centralized sequence generators for ordering.
+* **Distributed Locks**: Use Redlock or ZooKeeper recipes with fencing tokens. Always set lock TTL — without it, a crashed holder means permanent lock.
+
+== Troubleshooting
+
+* **Kafka Consumer Lag Growing**: Check consumer throughput vs. producer rate. Common causes: slow downstream calls in consumer, rebalancing storms (reduce `session.timeout.ms` and use cooperative sticky assignor), or a poison pill message blocking a partition.
+* **Cache Stampede**: Multiple threads see cache miss simultaneously, all hit DB. Solve with probabilistic early expiration, single-flight pattern (only one thread fetches, others wait), or pre-warming caches before TTL expires.
+* **Stale Data Served After Write**: Cache invalidation race condition. The write updated DB but cache hasn't been invalidated yet (or was repopulated with stale data). Use cache-aside with delete-on-write, not update-on-write.
+
+== Related
+
+* xref:case-studies:observability.adoc[Case Study: Distributed Tracing with OpenTelemetry]
+* xref:software-engineering:microservices.adoc[Microservices Design Patterns]
+* xref:software-engineering:java.adoc[Production Java Engineering]

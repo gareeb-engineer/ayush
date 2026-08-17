@@ -1,0 +1,6 @@
+* xref:index.adoc[Work Experience]
+** Tracing
+*** xref:Tracing/ex-tracing-part1-concepts-terms.adoc[Concepts & Terms]
+*** xref:Tracing/ex-tracing-part2a-otel-jaeger.adoc[OpenTelemetry & Jaeger]
+*** xref:Tracing/ex-tracing-part2b-apisix-jdbc-kiali.adoc[API Gateway, JDBC & Kiali]
+*** xref:Tracing/ex-tracing-part2c-protocols.adoc[Protocols]

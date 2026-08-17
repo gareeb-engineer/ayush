@@ -1,0 +1,86 @@
+= Terraform & Infrastructure as Code
+:page-role: engineering
+:description: Production Terraform patterns — state management, module composition, blast radius control, and drift detection from real infrastructure at scale
+:keywords: Terraform, IaC, state management, modules, blast radius, drift detection, AWS, EKS, remote state
+
+[.lead]
+_Terraform gets dangerous exactly when it becomes useful — at scale, with multiple teams, in production._
+
+== Overview
+
+Terraform is straightforward until you have 200+ resources, three teams, and a production change that wiped a database because someone ran `apply` on the wrong workspace. This page covers the operational patterns that keep Terraform safe and predictable at scale — the things you learn after your first state corruption incident.
+
+The difference between "I know Terraform" and "I run Terraform in production" is entirely in state discipline, module boundaries, and blast radius control.
+
+== Key Patterns
+
+=== Pattern 1: Remote State with Locking
+
+Local state is a single point of failure. Remote state (S3 + DynamoDB locking) is table stakes for any team environment.
+
+The real patterns emerge around state access:
+
+* **State isolation per environment** — separate state files for dev/staging/prod, never a single monolithic state
+* **Cross-stack data sharing** — `terraform_remote_state` data source for reading outputs across stacks (VPC IDs, subnet lists) without coupling lifecycle
+* **Backend configuration** — partial backend configs (`-backend-config`) to switch environments without hardcoding bucket names
+
+The locking conversation matters: DynamoDB conditional writes prevent concurrent applies. When a lock gets stuck (CI runner dies mid-apply), you need `terraform force-unlock` — and a runbook for when that's safe to run.
+
+=== Pattern 2: Module Composition and Boundaries
+
+Modules are not "reusable code." They are **blast radius boundaries** and **ownership contracts**.
+
+Design rules that work in practice:
+
+* **One module = one team's concern** — the networking module belongs to the platform team; the application module belongs to the service team
+* **Thin wrapper modules** over upstream community modules — pin the version, expose only the variables your org needs, hide complexity
+* **Output contracts** — modules communicate through outputs, never through implicit resource references
+* **Versioned module registry** — tag releases, consume specific versions, never reference `main` branch in production
+
+Anti-pattern: a 2000-line root module that creates VPC, EKS, RDS, and application resources in one `apply`. One bad variable change destroys everything.
+
+=== Pattern 3: Blast Radius Control
+
+Every `terraform apply` should have a predictable blast radius:
+
+* **Targeted applies** — `terraform apply -target=module.eks` during incident response when you need to change one thing without risking the rest
+* **State file decomposition** — separate state files for network, compute, data, and application layers. A bad EKS change cannot accidentally modify your VPC
+* **Plan review gates** — CI pipelines that show the plan, require human approval, then apply. No unreviewed applies in production
+* **Lifecycle rules** — `prevent_destroy` on stateful resources (RDS, S3 buckets with data). Terraform refuses to destroy them without explicit override
+
+=== Pattern 4: Drift Detection
+
+Infrastructure drifts. Someone clicks in the console. An autoscaler modifies tags. A security team adds an IAM policy outside Terraform.
+
+Detection strategy:
+
+* **Scheduled plan-only runs** — nightly `terraform plan` in CI that alerts on any detected changes
+* **Selective ignoring** — `ignore_changes` lifecycle block for attributes managed outside Terraform (ASG desired count, tags managed by AWS services)
+* **Import workflow** — when drift is intentional, `terraform import` to bring reality back into state rather than reverting the manual change
+
+== Production Considerations
+
+State corruption recovery is the scenario nobody prepares for until it happens:
+
+* **S3 versioning** on the state bucket — every state write preserves the previous version. Recovery is downloading a prior version and re-uploading
+* **State backup before risky operations** — `terraform state pull > backup.tfstate` before manual state surgery
+* **Provider version pinning** — lock provider versions in `.terraform.lock.hcl`. A provider upgrade changing resource schema mid-project has caused more outages than bad Terraform code
+* **Workspace vs. workdir strategy** — workspaces (`terraform workspace`) work for simple env separation. For complex environments with different resources per env, separate directories with shared modules via registry are safer
+
+Never run `terraform destroy` without a locked-down CI gate. One accidental destroy in production is a career-defining event.
+
+== Troubleshooting
+
+Common production Terraform issues:
+
+* **State lock stuck** — CI runner crashed during apply. Verify no apply is running, then `force-unlock`. Never force-unlock if another apply might be in progress
+* **Resource already exists** — import it into state rather than deleting and recreating (especially for stateful resources)
+* **Provider timeout on large applies** — increase timeouts in resource blocks, or decompose into smaller state files
+* **Dependency cycles** — usually a sign that module boundaries are wrong. Refactor the dependency, don't use `depends_on` as a band-aid
+* **Plan says "replace" unexpectedly** — check if a `ForceNew` attribute changed. Some AWS resources cannot be updated in-place (launch templates, some IAM resources)
+
+== Related
+
+* xref:case-studies:kubernetes-platform.adoc[Case Study: Air-Gapped Kubernetes Platform] — Terraform provisioned the entire private EKS infrastructure
+* xref:architecture:aws-architecture.adoc[AWS Architecture] — infrastructure design that Terraform codifies
+* xref:platform-engineering:aws.adoc[AWS Cloud Engineering] — the cloud resources Terraform manages

@@ -1,0 +1,141 @@
+= Integrating Cache with Spring Boot
+
+== Dependencies (`pom.xml`)
+
+[source,xml]
+----
+<!-- Spring Cache Abstraction -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-cache</artifactId>
+</dependency>
+
+<!-- Redis (recommended for production) -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-redis</artifactId>
+</dependency>
+----
+
+== Enable Caching
+
+[source,java]
+----
+@SpringBootApplication
+@EnableCaching   // <1>
+public class MyApp {
+    public static void main(String[] args) {
+        SpringApplication.run(MyApp.class, args);
+    }
+}
+----
+<1> This activates the cache proxy mechanism
+
+== Configuration (`application.yml`)
+
+[source,yaml]
+----
+spring:
+  redis:
+    host: localhost
+    port: 6379
+    timeout: 2000ms
+
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000   # 10 minutes in ms
+      cache-null-values: false
+----
+
+== Cache Config Bean (optional but recommended)
+
+[source,java]
+----
+@Configuration
+public class CacheConfig {
+
+    @Bean
+    public RedisCacheManager cacheManager(RedisConnectionFactory factory) {
+        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+            .entryTtl(Duration.ofMinutes(10))
+            .disableCachingNullValues()
+            .serializeValuesWith(
+                RedisSerializationContext.SerializationPair
+                    .fromSerializer(new GenericJackson2JsonRedisSerializer())
+            );
+
+        return RedisCacheManager.builder(factory)
+            .cacheDefaults(config)
+            .build();
+    }
+}
+----
+
+== The 3 Core Cache Annotations
+
+Apply these on your Service layer:
+
+[source,java]
+----
+@Service
+public class ProductService {
+
+    @Autowired
+    private ProductRepository repo;  // hits DB
+
+    // READ — returns from cache if key exists, else calls method + stores result
+    @Cacheable(value = "products", key = "#id")
+    public Product getProduct(Long id) {
+        return repo.findById(id).orElseThrow();  // DB hit only on cache miss
+    }
+
+    // UPDATE — updates DB AND refreshes the cache entry
+    @CachePut(value = "products", key = "#product.id")
+    public Product updateProduct(Product product) {
+        return repo.save(product);
+    }
+
+    // DELETE — removes entry from cache when deleted from DB
+    @CacheEvict(value = "products", key = "#id")
+    public void deleteProduct(Long id) {
+        repo.deleteById(id);
+    }
+}
+----
+
+`@Cacheable`:: *READ* — returns from cache if key exists, else calls method and stores result
+`@CachePut`:: *UPDATE* — updates DB and refreshes the cache entry
+`@CacheEvict`:: *DELETE* — removes entry from cache when deleted from DB
+
+== Model Must Be Serializable
+
+[source,java]
+----
+public class Product implements Serializable {   // <1>
+    private Long id;
+    private String name;
+    private Double price;
+    // getters, setters
+}
+----
+<1> Required for Redis serialization
+
+== Full Flow
+
+[source]
+----
+HTTP Request
+     │
+     ▼
+Controller  ──►  Service (@Cacheable)
+                     │
+              ┌──────┴──────┐
+              ▼             ▼
+           Redis          MySQL/Postgres
+         (cache hit)     (cache miss only)
+              │             │
+              └──────┬──────┘
+                     ▼
+               Return Data
+----

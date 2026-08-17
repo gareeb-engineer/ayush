@@ -1,0 +1,5 @@
+.Case Studies
+* xref:postgres-operator-upgrade.adoc[PostgreSQL Operator Upgrade]
+* xref:kubernetes-platform.adoc[Air-Gapped Kubernetes Platform]
+* xref:observability.adoc[Observability Stack]
+* xref:gitops-platform.adoc[GitOps Delivery Platform]

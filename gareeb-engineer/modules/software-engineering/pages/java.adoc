@@ -1,0 +1,57 @@
+= Production Java Engineering
+:page-role: engineering
+:description: Production Java patterns — JVM tuning, concurrency architecture, and performance engineering from real high-throughput services
+:keywords: Java, JVM, GC tuning, concurrency, CompletableFuture, virtual threads, performance, heap analysis, thread pools
+
+[.lead]
+_Java in production is a different animal from Java in interviews. The JVM is your co-pilot — learn to read its signals or spend nights reading heap dumps._
+
+== Overview
+
+This page covers the Java patterns that matter when your service handles real traffic — not the "explain HashMap internals" kind, but the "why is P99 latency spiking at 3 AM" kind. Five years of running Java services on Kubernetes has taught me that most production incidents trace back to three things: GC pauses, thread pool exhaustion, and memory leaks nobody noticed until the OOMKill.
+
+== Key Patterns
+
+=== Pattern 1: Thread Pool Sizing for I/O-Bound Services
+
+The classic formula `threads = cores * (1 + wait_time/service_time)` is a starting point, not gospel. In microservices making downstream HTTP calls with 200ms average latency:
+
+* **Sizing**: For 4-core pods doing mostly I/O, 20-40 threads handles typical load. Too many threads and context switching kills throughput.
+* **Isolation**: Separate thread pools for different downstream services. One slow dependency shouldn't drain your entire pool.
+* **Monitoring**: Track `pool.active.threads` and `pool.queue.size` via Micrometer. Queue growth means you're under-provisioned or a downstream is degrading.
+* **Virtual Threads (Java 21+)**: For pure I/O-bound work, virtual threads eliminate the sizing problem entirely. Pin-aware code (avoid `synchronized` in hot paths) is the main gotcha.
+
+=== Pattern 2: Backpressure in Concurrent Pipelines
+
+When Producer > Consumer, something has to give. In Java services:
+
+* **Bounded Queues**: `LinkedBlockingQueue` with capacity forces callers to slow down. Unbounded queues just delay the OOM.
+* **CompletableFuture Pipelines**: Chain with `thenComposeAsync` using a bounded executor. Without explicit executor, you're on ForkJoinPool.commonPool — shared with every other async operation.
+* **Reactive Backpressure**: Project Reactor's `onBackpressureBuffer(maxSize)` with overflow strategy. Useful for event-driven architectures where dropping is acceptable.
+* **Circuit Breaker Integration**: When backpressure triggers, circuit breakers should open to protect upstream callers.
+
+=== Pattern 3: GC Tuning for Latency-Sensitive Services
+
+* **G1GC** (default since Java 9): Set `-XX:MaxGCPauseMillis=200` as target. Monitor `gc.pause` metrics — if P99 exceeds target, increase heap or tune region size.
+* **ZGC** (Java 17+): Sub-millisecond pauses regardless of heap size. Trade-off: ~15% throughput overhead and higher memory footprint.
+* **Key Metrics**: Allocation rate (MB/s), promotion rate, and pause frequency. High allocation rate + frequent young GC = object churn in hot paths.
+* **Heap Sizing**: Don't let Kubernetes memory limit == JVM max heap. Leave 30% for metaspace, thread stacks, native memory. `container_memory_working_set_bytes` creeping toward limit is your early warning.
+
+== Production Considerations
+
+* **Container-Aware JVM**: Since Java 10, the JVM respects cgroup limits. Always set `-XX:MaxRAMPercentage=70` instead of fixed `-Xmx` in containers.
+* **Startup Time**: Spring Boot + large classpaths = 15-30s startup. CDS (Class Data Sharing) and AppCDS cut this by 30-40%. GraalVM native-image for cold-start-sensitive functions.
+* **Memory Leaks**: ClassLoader leaks from hot-reloading, ThreadLocal accumulation in pooled threads, and unclosed resources are the usual suspects. Periodic heap histogram analysis (`jcmd <pid> GC.class_histogram`) catches these early.
+* **JFR in Production**: Java Flight Recorder has <1% overhead. Enable always-on recording with `jcmd <pid> JFR.start` for post-incident analysis without needing to reproduce.
+
+== Troubleshooting
+
+* **OOMKilled but heap looks fine**: Check native memory with `jcmd <pid> VM.native_memory`. Direct ByteBuffers, JNI allocations, and thread stacks live off-heap.
+* **Latency spikes every N minutes**: Likely full GC or CMS/G1 concurrent mode failure. Check GC logs for "to-space exhausted" or "concurrent mode failure."
+* **Thread pool rejection**: `RejectedExecutionException` means your pool + queue are saturated. Don't just increase pool size — investigate why tasks are taking longer.
+
+== Related
+
+* xref:case-studies:observability.adoc[Case Study: Distributed Tracing with OpenTelemetry]
+* xref:architecture:java-architecture.adoc[Java Microservices Architecture]
+* xref:software-engineering:spring-boot.adoc[Spring Boot Production Patterns]

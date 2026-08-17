@@ -1,0 +1,25 @@
+= Let's Connect
+:page-role: contact
+:description: Contact Ayush Nigam — direct links for email, LinkedIn, GitHub, and resume download.
+:keywords: contact, resume, email, LinkedIn, GitHub
+
+[.lead]
+Prefer a direct message? Here's how to reach me.
+
+// TODO: Replace placeholder email and LinkedIn URL with your actual details
+* icon:envelope[] link:mailto:ayush.nigam@example.com[Email]
+* icon:linkedin[] link:https://linkedin.com/in/ayush-nigam[LinkedIn]
+* icon:github[] link:https://github.com/gareeb-engineer[GitHub]
+
+== Resume
+
+// TODO: Place your resume PDF at modules/ROOT/assets/attachments/Ayush_Nigam_Resume.pdf
+link:{attachmentsdir}/Ayush_Nigam_Resume.pdf[Download Resume (PDF), role="button"]
+
+NOTE: Resume PDF will be available here once uploaded. To add your resume, place the PDF file at `modules/ROOT/assets/attachments/Ayush_Nigam_Resume.pdf`.
+
+== Availability
+
+Currently open to *Senior SWE*, *DevOps Engineer*, and *Platform Engineer* roles.
+
+Preferred contact: Email or LinkedIn DM.

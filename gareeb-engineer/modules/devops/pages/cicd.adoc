@@ -1,0 +1,101 @@
+= CI/CD Architecture
+:page-role: engineering
+:description: Production CI/CD pipeline design — multi-stage architecture, artifact promotion, security scanning, and parallelism patterns from real delivery systems
+:keywords: CI/CD, Jenkins, GitHub Actions, pipeline architecture, artifact management, security scanning, trunk-based development, feature flags
+
+[.lead]
+_A pipeline is not a script that runs tests. It is a production system that gates every change to production — treat it like one._
+
+== Overview
+
+CI/CD pipelines are the backbone of delivery velocity. But most teams hit a ceiling: pipelines that take 45 minutes, flaky tests that train developers to ignore failures, and artifact sprawl that makes rollbacks a guessing game.
+
+This page covers pipeline architecture patterns for teams shipping to Kubernetes at scale — where "works on my machine" meets "runs in 200 pods across 3 environments."
+
+== Key Patterns
+
+=== Pattern 1: Trunk-Based Development with Feature Flags
+
+Long-lived feature branches are a liability. They accumulate merge debt, create integration surprises, and make CI results meaningless (you are testing code that will never exist in that form in production).
+
+*When to use*: Teams with >3 developers on the same service, or any team deploying more than once a week.
+
+*How it works*:
+- All developers commit to `main` (or a single integration branch)
+- Incomplete features hide behind feature flags (LaunchDarkly, Unleash, or simple config toggles)
+- CI runs on every commit to main — always green, always deployable
+- Feature flags decouple _deployment_ from _release_
+
+*Trade-offs*:
+- Requires discipline: broken main = broken everyone
+- Feature flag cleanup becomes tech debt if not managed
+- Testing partially-complete features requires flag-aware test suites
+
+=== Pattern 2: Pipeline-as-Code with Multi-Stage Fan-Out
+
+Monolithic Jenkinsfiles that run sequentially are the slow path. Production pipelines need parallelism with controlled gates.
+
+*Architecture*:
+....
+┌─────────┐     ┌──────────────────────────────────┐     ┌──────────┐
+│  Commit  │────▶│        Parallel Stage Fan-Out     │────▶│   Gate   │
+└─────────┘     │  ┌─────┐  ┌──────┐  ┌────────┐  │     └──────────┘
+                │  │Unit │  │SAST  │  │  Build │  │           │
+                │  │Tests│  │Scan  │  │  Image │  │           ▼
+                │  └─────┘  └──────┘  └────────┘  │     ┌──────────┐
+                └──────────────────────────────────┘     │  Deploy   │
+                                                         │  Staging  │
+                                                         └──────────┘
+                                                              │
+                                                              ▼
+                                                         ┌──────────┐
+                                                         │Integration│
+                                                         │  Tests    │
+                                                         └──────────┘
+                                                              │
+                                                              ▼
+                                                         ┌──────────┐
+                                                         │  Deploy   │
+                                                         │   Prod    │
+                                                         └──────────┘
+....
+
+*Key decisions*:
+- Fan-out unit tests, SAST scanning, and image builds in parallel (saves 60%+ wall-clock time)
+- Fan-in at quality gates before environment promotion
+- Each stage is idempotent and independently retryable
+
+=== Pattern 3: Artifact Promotion over Rebuild
+
+Never rebuild for production. The artifact that passed staging tests is the artifact that deploys to prod.
+
+*Implementation*:
+- Build once, tag with git SHA + build number
+- Promote the same container image through environments via tag mutation (e.g., `v1.2.3-rc` → `v1.2.3`)
+- Store build metadata (commit, test results, scan reports) alongside the artifact in registry
+
+*Why*: Rebuilds introduce non-determinism. Different base image layers, different dependency resolution timestamps, different compiled output. Promotion guarantees byte-for-byte identity.
+
+== Production Considerations
+
+*Pipeline reliability*: Your pipeline is a production system. If it has 95% reliability and you deploy 10 times/day, you lose half a day/week to pipeline failures. Target 99%+ green-on-valid-code.
+
+*Secret injection*: Never bake secrets into images or pipeline definitions. Use runtime injection via Vault, AWS Secrets Manager, or Kubernetes secrets mounted at deploy time.
+
+*Caching strategy*: Cache dependency downloads (Maven `.m2`, npm `node_modules`) and Docker layers aggressively. A cold-cache build that takes 12 minutes should take 3 minutes warm.
+
+*Observability*: Instrument pipelines with duration metrics per stage. Alert on p95 build time regression — it creeps up silently.
+
+== Troubleshooting
+
+*Flaky tests poisoning the pipeline*: Quarantine flaky tests into a separate non-blocking stage. Track flake rate per test. Fix or delete — never ignore.
+
+*Image build taking 10+ minutes*: Multi-stage Dockerfiles with proper layer ordering. Dependencies change rarely (cache them early), source changes frequently (copy late).
+
+*Pipeline drift across services*: Shared pipeline libraries (Jenkins shared libs, GitHub reusable workflows) with versioned templates. Teams override, but defaults enforce standards.
+
+== Related
+
+* xref:case-studies:gitops-platform.adoc[Case Study: GitOps Delivery Platform]
+* xref:devops:gitops.adoc[GitOps Principles]
+* xref:platform-engineering:argocd.adoc[ArgoCD Operations]

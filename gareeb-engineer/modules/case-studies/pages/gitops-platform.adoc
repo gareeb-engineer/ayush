@@ -1,0 +1,266 @@
+= Building a GitOps Delivery Platform with ArgoCD
+:page-role: case-study
+:description: Case study — building a GitOps delivery platform with ArgoCD and Helm for automated, repeatable Kubernetes deployments
+:keywords: ArgoCD, GitOps, Helm, Kubernetes, continuous delivery, deployment automation, Git
+
+[.lead]
+_Manual kubectl applies and "it works on my machine" deploys were costing us hours per week. This is how I built a platform where Git is the only deployment interface._
+
+== Problem
+
+Our deployment workflow was a collection of tribal knowledge and shell scripts. Each team had their own way of deploying: some ran `kubectl apply` from laptops, others had Jenkins pipelines that `exec`-ed into the cluster, and a few still SSHed into bastion hosts to push changes. This meant:
+
+- **No audit trail** — nobody could tell you what was running in production at 2am when the alert fired. "Who deployed what when?" was a 30-minute Slack investigation.
+- **Config drift everywhere** — staging and production diverged because manual patches were applied to prod "temporarily" and never backported to Git.
+- **Rollbacks were archaeology** — reverting a bad deploy meant finding the last known-good manifest version, which lived in someone's terminal history.
+- **Bus factor of one** — deploys were blocked when specific engineers were unavailable. Knowledge of "the deploy process for service X" lived in individual heads.
+
+We were shipping [YOUR_METRIC] services across 3 environments, and every deployment was a unique snowflake.
+
+== Constraints
+
+- **Multiple teams, multiple services** — platform couldn't be a single-team tool; it needed to serve [YOUR_METRIC] application teams with varying Kubernetes maturity.
+- **Existing Helm charts** — teams had already invested in Helm for templating. Rewriting everything to Kustomize or raw manifests was off the table.
+- **Gradual migration** — management wouldn't approve a big-bang migration. We needed to onboard services incrementally while the old process still worked.
+- **Team unfamiliarity with GitOps** — most developers had never heard of "reconciliation loops" or "desired state in Git." The platform had to be approachable.
+- **Air-gapped/private clusters** — our production clusters had no outbound internet access. ArgoCD needed to work with private Git repos and internal registries only.
+- **Existing RBAC requirements** — teams needed scoped access to their own namespaces, and the platform couldn't grant cluster-admin to everyone.
+
+== Architecture
+
+....
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Developer Workflow                             │
+│                                                                       │
+│   Feature Branch ──► PR (values change) ──► Review ──► Merge to main │
+└──────────────────────────────────┬───────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                       Git Repository (Source of Truth)                 │
+│                                                                       │
+│   environments/                                                       │
+│   ├── dev/                                                            │
+│   │   ├── app-a/values.yaml                                          │
+│   │   └── app-b/values.yaml                                          │
+│   ├── staging/                                                        │
+│   │   ├── app-a/values.yaml                                          │
+│   │   └── app-b/values.yaml                                          │
+│   └── prod/                                                           │
+│       ├── app-a/values.yaml                                          │
+│       └── app-b/values.yaml                                          │
+└──────────────────────────────────┬───────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                        ArgoCD (Reconciliation Engine)                  │
+│                                                                       │
+│   ┌─────────────────┐    ┌─────────────────┐    ┌────────────────┐  │
+│   │  App-of-Apps     │───▶│  App A (dev)     │    │  App B (dev)   │  │
+│   │  (root app)      │───▶│  App A (staging) │    │  App B (staging│  │
+│   │                  │───▶│  App A (prod)    │    │  App B (prod)  │  │
+│   └─────────────────┘    └────────┬─────────┘    └───────┬────────┘  │
+│                                    │                      │           │
+│         Health Checks ◄────────────┼──────────────────────┘           │
+│         Sync Hooks (migrations) ◄──┘                                  │
+└──────────────────────────────────┬───────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                      Kubernetes Cluster                                │
+│                                                                       │
+│   ┌────────────┐   ┌────────────┐   ┌────────────┐                  │
+│   │ Namespace: │   │ Namespace: │   │ Namespace: │                  │
+│   │  team-a    │   │  team-b    │   │  platform  │                  │
+│   │            │   │            │   │            │                  │
+│   │ Deployments│   │ Deployments│   │ ArgoCD     │                  │
+│   │ Services   │   │ Services   │   │ Controllers│                  │
+│   │ ConfigMaps │   │ ConfigMaps │   │            │                  │
+│   └────────────┘   └────────────┘   └────────────┘                  │
+└──────────────────────────────────────────────────────────────────────┘
+....
+
+The key architectural decision: ArgoCD lives in a dedicated `platform` namespace and manages applications across all team namespaces via the app-of-apps pattern. Each team's environment configuration lives in a single Git repository, and ArgoCD continuously reconciles the cluster state to match Git.
+
+== Investigation
+
+I evaluated three approaches to GitOps delivery:
+
+**Option 1: Flux CD** — lightweight, GitOps-native, and Kubernetes-first. Strong multi-tenancy via `Kustomization` CRDs. However, lacked a built-in UI for teams to visualize sync status, and Helm support required the Helm Controller (extra moving parts). Multi-cluster story was immature at the time.
+
+**Option 2: ArgoCD** — purpose-built GitOps controller with a production-ready UI. First-class Helm support (renders charts server-side). Built-in multi-cluster management. App-of-apps pattern enables managing dozens of services declaratively. RBAC maps cleanly to our team structure.
+
+**Option 3: Jenkins push-based CD** — what we already had. Jenkins pipelines running `helm upgrade` against clusters. Technically "worked" but violated GitOps principles: cluster state was whatever the last pipeline pushed, not what Git declared.
+
+I prototyped ArgoCD on a dev cluster for two weeks:
+
+- Tested Helm chart rendering with our existing charts — no modifications needed.
+- Validated the app-of-apps pattern: a single root Application CR generates child Applications per service/environment.
+- Tested sync policies: auto-sync with self-heal for dev, manual sync with auto-prune for prod.
+- Verified RBAC: ArgoCD projects map 1:1 to team namespaces with scoped permissions.
+- Confirmed it works in air-gapped mode: Git repo over SSH (internal GitLab), no outbound calls.
+
+The prototype handled 15 applications across 3 environments without issues.
+
+== Root Cause
+
+The root problem wasn't "how do we deploy to Kubernetes" — Jenkins solved that mechanically. The real challenge was: **how do you make deployment a self-service platform capability that any team can use independently, without requiring platform team involvement for every release?**
+
+The previous system failed because it centralized deployment knowledge in the platform team. Every new service needed a custom Jenkins pipeline, every environment promotion required manual parameter changes, and troubleshooting deployment failures required platform engineers to interpret Jenkins logs. Deployment wasn't a platform service — it was a bottleneck.
+
+== Solution
+
+I built the GitOps platform in three phases:
+
+**Phase 1: ArgoCD + App-of-Apps Foundation**
+
+The root Application manages all child applications declaratively:
+
+[source,yaml]
+----
+# root-app.yaml - the "app of apps"
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-root
+  namespace: argocd
+spec:
+  project: platform
+  source:
+    repoURL: git@gitlab.internal:platform/gitops-config.git
+    targetRevision: main
+    path: apps/
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+----
+
+Each child application is templated:
+
+[source,yaml]
+----
+# apps/app-a-prod.yaml - generated per service/environment
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-a-prod
+  namespace: argocd
+  labels:
+    team: team-a
+    env: prod
+spec:
+  project: team-a
+  source:
+    repoURL: git@gitlab.internal:platform/gitops-config.git
+    targetRevision: main
+    path: environments/prod/app-a
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: team-a-prod
+  syncPolicy:
+    automated:
+      prune: false        # prod: no auto-prune
+      selfHeal: true      # revert manual drift
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+----
+
+**Phase 2: Environment Promotion via PRs**
+
+The values structure per environment:
+
+[source,yaml]
+----
+# environments/prod/app-a/values.yaml
+image:
+  repository: registry.internal/app-a
+  tag: "v2.4.1"          # promoted from staging after validation
+
+replicas: 3
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# Environment-specific overrides
+config:
+  logLevel: warn
+  featureFlags:
+    newCheckout: true
+----
+
+Promotion flow: bump the image tag in the target environment's values file, open a PR, get approval, merge. ArgoCD picks up the change within [YOUR_METRIC] seconds and syncs.
+
+**Phase 3: Guardrails and Self-Service**
+
+- **RBAC**: ArgoCD Projects scoped per team — `team-a` can only deploy to `team-a-*` namespaces
+- **Sync Hooks**: database migrations run as PreSync hooks (Job resources)
+- **Health Checks**: custom Lua health checks for CRDs (PostgreSQL operator, cert-manager)
+- **Notifications**: ArgoCD notifications controller sends Slack alerts on sync failures
+- **Automated diff in PRs**: CI pipeline runs `argocd app diff` on PR and posts the diff as a comment
+
+== Trade-offs
+
+|===
+| Gained | Sacrificed
+
+| Complete audit trail (git log = deploy history)
+| Every config change requires a git commit (more ceremony)
+
+| Self-service deploys for all teams
+| ArgoCD controller resource overhead (~500Mi RAM for [YOUR_METRIC] apps)
+
+| Automatic drift correction (self-heal)
+| Teams lose ability to "quick-fix" in cluster directly
+
+| Consistent environments (same process for dev/staging/prod)
+| Initial learning curve — teams needed training on PR-based deploys
+
+| Instant rollbacks via git revert
+| Secrets management requires extra tooling (sealed-secrets/external-secrets)
+
+| Declarative desired state (what's in Git IS what's running)
+| App-of-apps pattern adds indirection (debugging requires understanding the hierarchy)
+|===
+
+The biggest friction point was cultural: developers accustomed to `kubectl edit deployment` on the fly had to retrain their muscle memory. We addressed this by making the PR-to-deploy cycle fast enough (< 3 minutes end-to-end) that the old way felt slow by comparison.
+
+== Result
+
+- **[YOUR_METRIC] applications** managed via GitOps across 3 environments
+- **Deployment frequency** increased from [YOUR_METRIC] to [YOUR_METRIC] per week (friction removed = more frequent, smaller deploys)
+- **Zero manual kubectl deploys** in production after full migration
+- **Rollback time** reduced from [YOUR_METRIC] minutes (find old manifest, apply, pray) to [YOUR_METRIC] seconds (git revert, push)
+- **Onboarding new services**: from "write a Jenkins pipeline" (2-3 days) to "add values file + App CR" (< 1 hour)
+- **Drift incidents**: dropped from [YOUR_METRIC] per month to zero (self-heal catches everything)
+- **Mean time to deploy (MTTD)**: from [YOUR_METRIC] minutes (waiting for platform team) to [YOUR_METRIC] minutes (merge PR, ArgoCD syncs)
+
+== Lessons Learned
+
+. **GitOps is a team adoption challenge more than a technical one.** ArgoCD installation took a day. Getting teams to trust "merge the PR and walk away" took months. Invest in training, documentation, and pair-deploying with skeptical teams early.
+
+. **App-of-apps simplifies management but adds indirection.** When a sync fails, engineers need to understand the hierarchy: root app → child app → Helm template → rendered manifest. Build observability around this (ArgoCD notifications, dashboards showing sync status per team).
+
+. **PR-based promotion provides a natural audit trail.** Every production deployment has a PR with reviewers, comments, and CI validation. When something breaks, `git log --oneline environments/prod/` tells the complete story.
+
+. **Health checks are non-negotiable for automated sync.** Without custom health checks, ArgoCD considers a deployment "healthy" the moment pods are created — before they've actually started serving traffic. We wrote Lua health checks for every CRD and used `progressDeadlineSeconds` on Deployments.
+
+. **Start with dev, prove value, then expand.** We onboarded dev environments first (auto-sync, self-heal, low risk). Once teams saw the speed and reliability, they asked for staging and prod — pull adoption beats push enforcement.
+
+. **Secrets are the hard part.** GitOps means everything in Git, but secrets can't live in Git. We evaluated sealed-secrets, external-secrets-operator, and Vault. Picked external-secrets-operator because it integrates with our existing AWS Secrets Manager without requiring teams to learn a new secrets workflow.
+
+== Related
+
+* xref:devops:gitops.adoc[GitOps Principles]
+* xref:platform-engineering:argocd.adoc[ArgoCD Operations]

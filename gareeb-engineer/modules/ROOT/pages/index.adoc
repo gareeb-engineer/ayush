@@ -1,7 +1,143 @@
-[.text-center]
 = Ayush Nigam
+:page-role: home
+:description: Software & Platform Engineer portfolio — Java, Kubernetes, AWS, DevOps
+:keywords: Java, Spring Boot, Kubernetes, AWS, DevOps, Platform Engineering, Portfolio
 
-[.text-center]
-**DevOps Engineer | Software Engineer | CI/CD | AWS | Kubernetes | Terraform | Linux **
+[.lead]
+_aka Gareeb Engineer — building expensive solutions on a frugal budget_
 
-image::banner.png[Ayush Nigam's Banner]
+**Software & Platform Engineer | Java | Kubernetes | AWS | DevOps**
+
+5 years building high-throughput services and the cloud-native platforms that run them.
+
+xref:experience.adoc[Engineering Work] | xref:case-studies:postgres-operator-upgrade.adoc[Case Studies] | xref:skills.adoc[Skills] | link:https://github.com/gareeb-engineer[GitHub] | link:https://linkedin.com/in/ayush-nigam[LinkedIn]
+
+image::banner.png[Ayush Nigam — Software & Platform Engineer]
+
+== 5+ Years — Software & Platform Engineering
+
+**JAVA**:: Spring Boot • Microservices • REST • Kafka
+
+**PLATFORM**:: Kubernetes • Helm • ArgoCD • Terraform
+
+**CLOUD**:: AWS • EKS • VPC • IAM
+
+**RELIABILITY**:: Observability • Troubleshooting • Automation
+
+== What Are You Hiring For?
+
+[.card]
+****
+**Java / Backend Engineer**
+
+High-throughput services, clean APIs, and microservices that scale without drama.
+
+xref:software-engineering:java.adoc[Explore →]
+****
+
+[.card]
+****
+**DevOps Engineer**
+
+CI/CD pipelines, infrastructure-as-code, and observability that keeps production calm.
+
+xref:devops:cicd.adoc[Explore →]
+****
+
+[.card]
+****
+**Platform Engineer**
+
+Self-service platforms, GitOps workflows, and developer experience that multiplies teams.
+
+xref:platform-engineering:kubernetes.adoc[Explore →]
+****
+
+// == Impact Snapshot Section ==
+// TODO: Replace [YOUR_METRIC] placeholders with real numbers
+
+== Impact at a Glance
+
+[cols="1,2,3", options="header"]
+|===
+| Metric | Label | Context
+
+| **[YOUR_METRIC]+**
+| Microservices in Production
+| Java + Spring Boot services running on Kubernetes
+
+| **[YOUR_METRIC]%**
+| Platform Uptime
+| HA PostgreSQL + automated failover and monitoring
+
+| **[YOUR_METRIC]%**
+| Deployment Time Reduced
+| GitOps with ArgoCD + Helm streamlining releases
+
+| **[YOUR_METRIC]+**
+| Services Onboarded
+| Zero-drift IaC patterns adopted by new teams
+|===
+
+== Engineering Capabilities
+
+**Platform Automation**:: Automated application and infrastructure delivery using Kubernetes, Helm, Jenkins and GitOps workflows.
+
+**Kubernetes Operations**:: Diagnosed and resolved production Kubernetes issues involving scheduling, storage, resources, node health, networking and workload failures.
+
+**Database Platform Engineering**:: Operated PostgreSQL on Kubernetes using the PostgreSQL Operator — including CRD lifecycle, Patroni HA, Spilo containers and ArgoCD synchronization.
+
+**Observability**:: Built observability workflows using metrics, logs and distributed tracing with Prometheus, Grafana, OpenTelemetry, Jaeger and ELK.
+
+== Core Stack
+
+**Java / Backend**:: Java · Spring Boot · PostgreSQL · Kafka · REST APIs
+**DevOps / Cloud**:: AWS · Terraform · Docker · Jenkins · Prometheus · Grafana
+**Platform / GitOps**:: Kubernetes · Helm · ArgoCD · OpenTelemetry · Jaeger
+
+== Featured Engineering Work
+
+[.card]
+****
+**Air-Gapped Kubernetes Platform** — _[Platform]_
+
+Designed and deployed a production-grade EKS cluster with zero internet egress for compliance-restricted teams.
+
+xref:case-studies:kubernetes-platform.adoc[Read the case study →]
+****
+
+[.card]
+****
+**Observability Stack** — _[DevOps]_
+
+End-to-end distributed tracing with OpenTelemetry + Jaeger across Java services and JDBC calls.
+
+xref:case-studies:observability.adoc[Read the case study →]
+****
+
+[.card]
+****
+**Kubernetes Platform Engineering** — _[Platform]_
+
+GitOps workflows with ArgoCD + Helm, chaos testing with Litmus, HA PostgreSQL on K8s.
+
+xref:case-studies:gitops-platform.adoc[Read the case study →]
+****
+
+'''
+
+// == Footer: Availability & Contact CTA ==
+// TODO: Replace [YOUR_TITLE] with your current job title
+// TODO: Replace [YOUR_COMPANY] with your current company name
+// TODO: Replace ayush.nigam@example.com with your real email
+// TODO: Replace LinkedIn and GitHub URLs with your actual profiles
+
+== Get in Touch
+
+Currently *[YOUR_TITLE]* at *[YOUR_COMPANY]* · Open to Senior SWE, DevOps Engineer, and Platform Engineer roles.
+
+link:mailto:ayush.nigam@example.com[icon:envelope[] Email] |
+link:https://linkedin.com/in/ayush-nigam[icon:linkedin[] LinkedIn] |
+link:https://github.com/gareeb-engineer[icon:github[] GitHub]
+
+link:{attachmentsdir}/Ayush_Nigam_Resume.pdf[icon:file-pdf[] Download Resume]

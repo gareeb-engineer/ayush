@@ -1,0 +1,117 @@
+= Chaos Engineering
+:page-role: engineering
+:description: Chaos engineering in production Kubernetes — Litmus Chaos experiments, steady-state hypothesis, game day planning, and blast radius control
+:keywords: Chaos Engineering, Litmus Chaos, Kubernetes, Game Day, Fault Injection, Pod Kill, Network Partition, Resilience, Steady State
+
+[.lead]
+_If you haven't broken it on purpose, you don't know how it breaks. And you will be very surprised when it breaks on its own._
+
+== Overview
+
+Chaos engineering is not "randomly killing pods and hoping for the best." It's a disciplined practice of forming hypotheses about system behavior under failure, injecting controlled faults, and validating that your resilience mechanisms actually work.
+
+In Kubernetes environments, the blast radius of a single pod failure is small — but cascading failures from network partitions, node drains, or resource exhaustion can take down entire workloads. Chaos experiments prove (or disprove) that your retry logic, circuit breakers, pod disruption budgets, and failover mechanisms work under real conditions.
+
+I run chaos experiments using Litmus Chaos on EKS clusters, integrated into game days and (selectively) into CI pipelines.
+
+== Key Patterns
+
+=== Pattern 1: Progressive Chaos — Start Small, Expand Deliberately
+
+Never start chaos experiments at full blast. Progressive chaos follows a severity ladder:
+
+*Level 1 — Pod-level faults* (lowest blast radius):
+
+* `pod-delete`: Kill a single pod, verify StatefulSet/Deployment recreates it within expected time
+* `container-kill`: Kill a specific container in a multi-container pod, verify sidecar recovery
+* `pod-cpu-hog` / `pod-memory-hog`: Simulate resource pressure, verify HPA scales and requests succeed
+
+*Level 2 — Network faults* (medium blast radius):
+
+* `pod-network-loss`: 100% packet loss to one pod — does the circuit breaker trip?
+* `pod-network-latency`: Inject 500ms latency — do upstream timeouts fire correctly?
+* `pod-network-partition`: Isolate a pod from its peers — does Patroni trigger leader election?
+
+*Level 3 — Node and cluster faults* (highest blast radius):
+
+* `node-drain`: Graceful evacuation — do PodDisruptionBudgets maintain quorum?
+* `node-taint`: Mark node as unschedulable — do pods reschedule within SLA?
+* `ec2-terminate`: Kill the underlying EC2 instance — does the ASG replace it and pods recover?
+
+Each level validates different resilience layers. Don't jump to Level 3 until Level 1 passes consistently.
+
+=== Pattern 2: Observability-Driven Chaos
+
+Every chaos experiment must be observed through your monitoring stack. If you can't see the impact, you can't learn from it.
+
+Experiment execution loop:
+
+1. *Define steady state*: What does "healthy" look like? (e.g., p99 latency < 200ms, error rate < 0.1%, all replicas Ready)
+2. *Inject fault*: Run Litmus ChaosEngine with defined experiment
+3. *Observe impact*: Watch Grafana dashboards in real-time — did alerts fire? Did metrics deviate?
+4. *Validate recovery*: After fault clears, does the system return to steady state within expected time?
+5. *Document findings*: What worked, what didn't, what needs fixing
+
+The *observability gap* is the most common chaos experiment finding — "we injected a failure and nothing showed up in our dashboards." That's not a resilience problem; it's a visibility problem. Fix your instrumentation first.
+
+=== Pattern 3: Automated Chaos in CI (Carefully)
+
+Selected low-blast-radius experiments can run in CI against staging environments:
+
+* Pod-delete experiments against stateless services — validates that deployments tolerate restarts
+* Network-latency experiments — validates timeout configurations are correct
+* Run only in non-production namespaces with strict RBAC boundaries
+
+Gate criteria: if the chaos experiment causes SLO breach in staging, the pipeline fails. This catches resilience regressions before they reach production.
+
+*What NOT to automate in CI*: node-level faults, experiments against stateful workloads, anything that could cascade to shared infrastructure.
+
+== Production Considerations
+
+*Game day planning*:
+
+* Schedule quarterly game days with the full team (not just SRE)
+* Share the experiment plan ahead of time — chaos is not a surprise attack on your colleagues
+* Have a kill switch: Litmus supports `engineState: stop` to abort mid-experiment
+* Timebox to 2 hours max — fatigue leads to mistakes
+
+*Blast radius control*:
+
+* Always set `annotationCheck: true` — only target pods with opt-in annotations
+* Use Litmus `appinfo` to scope experiments to specific labels/namespaces
+* Run during business hours initially — you want full team availability for unexpected cascades
+* PodDisruptionBudgets are your safety net: set `minAvailable` before running pod-kill experiments
+
+*When chaos reveals bugs*:
+
+* Don't fix in the moment during a game day — document and create tickets
+* Prioritize fixes by blast radius: a missing circuit breaker is more urgent than a slow recovery
+* Re-run the experiment after the fix to validate
+
+== Troubleshooting
+
+|===
+| Symptom | Likely Cause | Fix
+
+| ChaosEngine stuck in "Running" state
+| Experiment pod OOMKilled or RBAC insufficient
+| Check chaos runner pod logs, verify ServiceAccount has required permissions
+
+| Experiment completes but no impact observed
+| Wrong target selector or pod already restarted before fault applied
+| Verify `appinfo.applabel` matches target pods, increase experiment duration
+
+| Blast radius exceeded — unintended pods affected
+| Label selector too broad or missing namespace scope
+| Add namespace restriction to ChaosEngine, use annotation-based targeting
+
+| Litmus operator not reconciling ChaosEngines
+| Operator pod crashed or CRDs not installed
+| `kubectl get pods -n litmus`, verify `litmuschaos.io` CRDs exist
+|===
+
+== Related
+
+* xref:case-studies:kubernetes-platform.adoc[Case Study: Air-Gapped Kubernetes Platform]
+* xref:observability.adoc[Observability — Watching Chaos Experiments Unfold]
+* xref:disaster-recovery.adoc[Disaster Recovery — When Chaos Finds Real Bugs]

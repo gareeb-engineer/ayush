@@ -1,0 +1,76 @@
+= Helm Engineering
+:page-role: engineering
+:description: Production Helm patterns — chart architecture for reuse, values layering, CRD lifecycle management, and debugging upgrade failures in GitOps pipelines
+:keywords: Helm, Kubernetes, chart architecture, values layering, CRD management, GitOps, ArgoCD, dependency management, Helm rollback
+
+[.lead]
+_Helm is a packaging tool that becomes a footgun the moment you treat it like one. Production Helm is about designing charts that survive 200 upgrades without a rollback prayer._
+
+== Overview
+
+Helm's value proposition is simple: templated Kubernetes manifests with release lifecycle management. The engineering challenge is making charts that work across environments, handle CRD evolution gracefully, and don't explode during upgrades when someone changes an immutable field.
+
+This page covers chart design patterns for multi-environment deployments, the values layering strategy that keeps your GitOps repos sane, and the CRD ownership problem that catches every team exactly once.
+
+== Key Patterns
+
+=== Pattern 1: Chart Architecture for Reuse
+
+A chart that only works for one team's one service is a template, not a chart. Reusable chart design:
+
+* *Library charts* for shared helpers (`_helpers.tpl`) — labels, selectors, common annotations. Never copy-paste label logic across charts.
+* *Umbrella charts* (`Chart.yaml` dependencies) for composed deployments — but keep the dependency tree shallow. Two levels max. Three levels means debugging hell.
+* Separate *infrastructure charts* (operators, CRDs, cluster-scoped resources) from *application charts* (namespaced workloads). They have different upgrade lifecycles.
+* Pin dependency versions in `Chart.lock`. `helm dependency update` without a lockfile in CI is a ticking bomb.
+
+=== Pattern 2: Values Layering (Base + Environment Overlays)
+
+Single `values.yaml` for all environments is a rookie mistake. Layer them:
+
+```
+values/
+├── base.yaml          # Defaults: image repo, resource requests, probes
+├── dev.yaml           # Overrides: replica=1, debug logging, relaxed limits
+├── staging.yaml       # Overrides: replica=2, production-like config
+└── prod.yaml          # Overrides: replica=3, strict limits, PDBs enabled
+```
+
+Apply with: `helm upgrade -f values/base.yaml -f values/prod.yaml` — later files win. In ArgoCD, use multiple `valueFiles` in the Application spec.
+
+Key rule: `base.yaml` should produce a *working* deployment on its own. Environment overlays only *tune*, never *complete*.
+
+=== Pattern 3: CRD Handling in Helm
+
+CRDs in Helm are inherently awkward. Helm installs them from `crds/` directory on first install but *never upgrades them*. Your options:
+
+* *Separate CRD chart*: Dedicated chart with just CRDs, deployed before the operator chart. ArgoCD sync wave `-1` handles ordering.
+* *Skip Helm's CRD mechanism*: Put CRDs in `templates/` with `{{- if .Values.installCRDs }}` guard. Now Helm manages their lifecycle — but you own the upgrade risk.
+* *Server-side apply for CRDs*: Let ArgoCD manage CRDs with `ServerSideApply=true`. Avoids the annotation size limit that kills large CRDs (looking at you, Istio).
+
+The PostgreSQL Operator taught us this lesson the hard way — CRD version drift between operator and CRD chart caused ArgoCD to loop indefinitely.
+
+== Production Considerations
+
+*Upgrade failures on immutable fields*: Changing a Service's `clusterIP`, a Deployment's `selector`, or a Job's `spec` after creation = failed upgrade. Helm can't patch immutable fields. Fix: use `helm diff` in CI to catch these before they hit the cluster.
+
+*Dependency conflicts*: Two umbrella charts pulling different versions of the same subchart. Solution: flatten dependencies where possible, or use `alias` to namespace conflicting subcharts.
+
+*Hooks and upgrade ordering*: `pre-upgrade` hooks run *before* the upgrade — use them for DB migrations. But if the hook Job fails, the entire release is stuck in `pending-upgrade`. Always set `hook-delete-policy: before-hook-creation` and reasonable `activeDeadlineSeconds`.
+
+*Three-way merge pitfalls*: Helm 3's three-way merge compares live state, old manifest, and new manifest. Manual `kubectl edit` outside Helm creates drift that surfaces as unexpected diffs on next upgrade. In GitOps, this means: never `kubectl edit` resources Helm owns.
+
+== Troubleshooting
+
+*Helm rollback doesn't rollback CRDs*: CRDs are cluster-scoped and Helm explicitly excludes them from rollback. If a CRD change breaks things, you need manual `kubectl apply` of the old CRD version.
+
+*`UPGRADE FAILED: another operation is in progress`*: A previous release is stuck in `pending-install` or `pending-upgrade`. Fix: `helm history <release>` to identify the stuck revision, then `helm rollback <release> <last-good-revision>`.
+
+*Template rendering works locally but fails in CI*: Usually a Helm version mismatch or missing `helm dependency build`. Pin Helm version in CI. Always run `helm dependency build` before `helm template`.
+
+*Secret drift in sealed-secrets + Helm*: If Helm owns a Secret but SealedSecrets also reconciles it, you get a fight. Solution: exclude Helm-managed secrets from SealedSecrets scope, or let SealedSecrets own all secrets and reference them in Helm values.
+
+== Related
+
+* xref:case-studies:gitops-platform.adoc[Case Study: GitOps Delivery Platform]
+* xref:platform-engineering:argocd.adoc[ArgoCD & GitOps Operations]
+* xref:case-studies:postgres-operator-upgrade.adoc[Case Study: PostgreSQL Operator Upgrade]

@@ -1,0 +1,97 @@
+= Observability Engineering
+:page-role: engineering
+:description: Production observability strategy — metrics, logs, traces, alert design, and instrumentation patterns for distributed Kubernetes workloads
+:keywords: Observability, Prometheus, Grafana, Jaeger, OpenTelemetry, Metrics, Logs, Traces, Alerting, SLO
+
+[.lead]
+_Observability isn't three tools duct-taped together. It's the ability to ask arbitrary questions about production without deploying new code._
+
+== Overview
+
+Running distributed systems on Kubernetes means accepting that failures are multi-layered — a slow database query manifests as a pod restart, which surfaces as a spike in 5xx responses, which triggers a PagerDuty alert nobody understands at 3 AM. Observability bridges the gap between "something is broken" and "here's exactly why."
+
+This page covers the instrumentation philosophy, signal correlation patterns, and alert design principles I've built across production Kubernetes clusters running Java microservices with OpenTelemetry, Prometheus, and Jaeger.
+
+== Key Patterns
+
+=== Pattern 1: RED Method for Service-Level Signals
+
+Rate, Errors, Duration — the three signals that answer "is this service healthy for its consumers?"
+
+* *Rate*: Requests per second, segmented by endpoint. Sudden drops often indicate upstream failures, not local issues.
+* *Errors*: Error ratio (not count). A service doing 10k rps with 5 errors is healthy; one doing 10 rps with 5 errors is on fire.
+* *Duration*: p50/p95/p99 latencies. The gap between p95 and p99 often reveals contention issues (GC pauses, connection pool exhaustion, lock contention).
+
+RED works at the service boundary. It tells you *what* is broken. You need traces to tell you *why*.
+
+=== Pattern 2: USE Method for Infrastructure Signals
+
+Utilization, Saturation, Errors — applied to every resource (CPU, memory, disk, network, connection pools).
+
+* *Utilization*: How busy is the resource? A node at 85% CPU utilization is fine — unless it's 85% in `iowait`.
+* *Saturation*: Work that's queued and waiting. Queue depth in thread pools, pending I/O requests, Kafka consumer lag.
+* *Errors*: Resource-level errors — disk I/O errors, network packet drops, OOM kills.
+
+The critical insight: USE surfaces problems *before* they hit RED metrics. If you only alert on RED, you're always reactive.
+
+=== Pattern 3: Exemplar-Based Correlation
+
+Exemplars attach trace IDs to metric data points. When a Prometheus histogram bucket spikes, the exemplar gives you a direct link to the trace that caused it.
+
+Implementation with OpenTelemetry:
+
+* Instrument Java services with `opentelemetry-javaagent` — automatic JDBC, HTTP, gRPC instrumentation
+* Configure Prometheus exporter with exemplar support
+* Grafana pulls exemplars from Prometheus, links to Jaeger trace view
+
+This eliminates the "which request caused this spike?" guessing game. One click from a dashboard anomaly to the full distributed trace.
+
+== Production Considerations
+
+*Alert design — signal vs noise*:
+
+* Alert on symptoms (RED), not causes (USE). High CPU doesn't mean broken service.
+* Every alert needs a runbook link. If you can't write the runbook, you don't understand the failure mode.
+* Multi-window, multi-burn-rate alerts for SLO-based monitoring. A 1% error budget burn over 1 hour is noise; 10% burn over 5 minutes needs human attention.
+
+*Dashboard philosophy*:
+
+* Layer 1: Service overview (RED per service, SLO budget remaining)
+* Layer 2: Resource view (USE per node/pod)
+* Layer 3: Deep-dive (per-endpoint latency, trace search, log correlation)
+
+Each dashboard answers one question. If you need to open three tabs to diagnose, your dashboards are wrong.
+
+*Instrumentation strategy*:
+
+* Auto-instrument everything with OTel agent, then add manual spans for business-critical paths
+* Always propagate context — W3C Trace Context headers across HTTP, Kafka headers for async
+* Log correlation: inject trace_id and span_id into structured logs (MDC in Java)
+
+== Troubleshooting
+
+|===
+| Symptom | Likely Cause | Investigation
+
+| Missing traces in Jaeger
+| Sampling config or collector backpressure
+| Check `otel-collector` pod logs for dropped spans, verify sampling rate
+
+| Prometheus scrape targets down
+| Pod readiness probe failing or ServiceMonitor selector mismatch
+| `kubectl get servicemonitor`, verify label selectors match pod labels
+
+| Alert fatigue (too many pages)
+| Alerting on causes not symptoms, thresholds too tight
+| Audit alert frequency, convert to multi-burn-rate SLO alerts
+
+| Gaps in Grafana dashboards
+| Prometheus retention or pod restarts losing in-memory data
+| Check Prometheus `tsdb` status, verify PVC is bound and not full
+|===
+
+== Related
+
+* xref:case-studies:observability.adoc[Case Study: Implementing Distributed Tracing with OpenTelemetry + Jaeger]
+* xref:architecture:kubernetes-architecture.adoc[Kubernetes Platform Architecture]
+* xref:chaos-engineering.adoc[Chaos Engineering — Observability-Driven Experiments]

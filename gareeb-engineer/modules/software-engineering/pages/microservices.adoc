@@ -1,0 +1,70 @@
+= Microservices Design
+:page-role: engineering
+:description: Microservices architecture patterns — service decomposition, inter-service communication, resilience, and distributed transaction strategies for production systems
+:keywords: microservices, service mesh, circuit breaker, saga pattern, event-driven, resilience, bulkhead, distributed transactions, service decomposition
+
+[.lead]
+_Microservices aren't about making things small. They're about making boundaries explicit — and then living with the distributed systems tax you just signed up for._
+
+== Overview
+
+After building and maintaining microservices across multiple teams, the pattern is clear: most pain comes from bad service boundaries (too fine-grained, shared databases) and naive communication patterns (synchronous chains 5 services deep). This page covers the architectural decisions that determine whether your microservices architecture is an asset or a distributed monolith with extra network hops.
+
+== Key Patterns
+
+=== Pattern 1: Service Mesh vs. Library-Based Resilience
+
+The "where does resilience live?" question defines your architecture's operational complexity:
+
+**Library-Based (Resilience4j)**:
+
+* Circuit breakers, retries, bulkheads compiled into the service.
+* Pros: No sidecar overhead, simpler debugging (breakpoints in resilience code), no proxy latency.
+* Cons: Every service needs the library. Cross-language environments require duplicating logic. Upgrading resilience config means redeploying services.
+* Best for: Small teams, single-language (Java) environments, <20 services.
+
+**Service Mesh (Istio/Linkerd)**:
+
+* Resilience at the infrastructure layer via sidecar proxies.
+* Pros: Language-agnostic, centralized policy, mTLS for free, no code changes for retry/timeout policies.
+* Cons: Sidecar resource overhead (~50MB per pod), debugging through proxies is painful, YAML complexity explosion.
+* Best for: Polyglot environments, platform teams managing for multiple product teams, >50 services.
+
+**My approach**: Resilience4j for application-level patterns (circuit breakers with custom fallback logic) + Istio for infrastructure concerns (mTLS, traffic shifting, observability). Don't force either to do both jobs.
+
+=== Pattern 2: Event-Driven vs. Request-Driven Communication
+
+* **Synchronous (REST/gRPC)**: Use when the caller needs the response to proceed. Keep chains ≤ 2 hops. Beyond that, you've built a distributed monolith.
+* **Asynchronous (Kafka/RabbitMQ)**: Use for decoupling — when Service A doesn't need to wait for Service B's work to complete. Event-driven is natural for state change notifications.
+* **Hybrid Pattern**: Accept command synchronously (validate, return 202 Accepted), process asynchronously, notify completion via event or webhook. Best of both worlds for long-running operations.
+* **Data Consistency**: Async communication means eventual consistency. Design UIs that acknowledge this — show "processing" states rather than pretending synchronous completion.
+
+=== Pattern 3: Circuit Breaker Strategy
+
+Not all failures deserve the same response:
+
+* **Closed → Open**: Trip after N consecutive failures or error rate > threshold in sliding window. Use `slidingWindowType=COUNT_BASED` for low-traffic services, `TIME_BASED` for high-throughput.
+* **Fallback Design**: Fallbacks should degrade gracefully — cached data, default values, or reduced functionality. Never let a fallback make another remote call to a related service.
+* **Half-Open Probing**: Allow N requests through to test recovery. Set `permittedNumberOfCallsInHalfOpenState` low (3-5) to avoid flooding a recovering service.
+* **Per-Endpoint Breakers**: Don't share a single breaker across all endpoints of a downstream service. A failing `/search` shouldn't trip the breaker for `/health`.
+
+== Production Considerations
+
+* **Service Decomposition**: Split by business capability, not by technical layer. "Order Service" yes, "Database Service" no. The litmus test: can this service be deployed independently without coordinating with other teams?
+* **Distributed Transactions — Saga Pattern**: Choreography (event-based) for simple flows (<4 steps). Orchestration (central coordinator) for complex flows with compensation logic. Always design compensating transactions — "undo" is harder than "do."
+* **Bulkhead Isolation**: Separate thread pools or semaphores per downstream dependency. One slow service shouldn't exhaust resources for calls to healthy services.
+* **Timeouts**: Set explicit timeouts on every remote call. Default: 2x the P99 latency of the downstream. Never leave a call without a timeout — it's a resource leak waiting to happen.
+* **Idempotency**: Every write operation across service boundaries must be idempotent. Use idempotency keys (client-generated UUIDs) for non-naturally-idempotent operations.
+
+== Troubleshooting
+
+* **Cascading Failures**: Service A → B → C, and C is slow. Without timeouts and circuit breakers at each hop, thread pools exhaust backward through the chain. Check distributed traces for the actual slow service.
+* **Retry Storms**: Exponential backoff with jitter is mandatory. Without jitter, synchronized retries from multiple instances create thundering herd effects on the recovering service.
+* **Data Inconsistency**: Saga participant failed after previous steps completed. Check dead letter queues for unprocessed compensation events. Implement idempotent replay for stuck sagas.
+
+== Related
+
+* xref:case-studies:observability.adoc[Case Study: Distributed Tracing with OpenTelemetry]
+* xref:architecture:java-architecture.adoc[Java Microservices Architecture]
+* xref:software-engineering:distributed-systems.adoc[Distributed Systems Patterns]
+* xref:software-engineering:spring-boot.adoc[Spring Boot Production Patterns]

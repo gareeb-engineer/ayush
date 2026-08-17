@@ -1,0 +1,278 @@
+= Diagnosing a Kubernetes PostgreSQL Operator Upgrade
+:page-role: case-study
+:description: Production investigation of a PostgreSQL Operator upgrade causing ArgoCD sync failures and Spilo container startup issues on Kubernetes
+:keywords: Kubernetes, Zalando PostgreSQL Operator, Spilo, Patroni, ArgoCD, CRDs, Helm, SecurityContext, Linux Capabilities, GitOps, PostgreSQL HA
+
+[.lead]
+_A routine operator version bump turned into a multi-layer investigation across GitOps reconciliation, CRD lifecycle management, and Linux capabilities._
+
+== Problem
+
+A scheduled upgrade of the Zalando PostgreSQL Operator from v1.9.0 to v1.10.0 in our Kubernetes cluster triggered two cascading failures that were not immediately obvious from the surface symptoms.
+
+First, ArgoCD reported persistent `OutOfSync` status on the PostgreSQL Application resource — the diff view showed fields that didn't exist in our Helm chart values. Second, PostgreSQL workloads managed by the operator failed to start, with Spilo containers entering `CrashLoopBackOff` within seconds of creation.
+
+The combination was dangerous: the operator was running at the new version, but it couldn't reconcile existing PostgreSQL clusters into a healthy state. We had degraded database availability in a production-adjacent environment that mirrored our production topology.
+
+== Constraints
+
+* **Production-adjacent environment** — real data, real traffic patterns, used for pre-production validation. Downtime here blocks release pipelines.
+* **ArgoCD as sole deployment mechanism** — no manual `kubectl apply` allowed; every change must flow through Git. This is policy, not preference.
+* **Zalando PostgreSQL Operator** managing stateful workloads — Patroni for HA, Spilo containers, WAL-G for backups.
+* **HA requirement** — the PostgreSQL clusters serve application state; SLA requires recovery within 15 minutes.
+* **Team context** — I was the platform engineer on-call; the application team was blocked on database connectivity.
+* **No rollback option initially** — CRD schema changes had already been applied; rolling back the operator without addressing CRDs would leave the cluster in an inconsistent state.
+
+== Architecture
+
+....
+┌─────────────────────────────────────────────────────────────┐
+│                        ArgoCD                                │
+│         (GitOps — single source of truth)                   │
+│                                                             │
+│  ┌──────────────┐         ┌──────────────────────┐         │
+│  │  Application │         │  Application          │         │
+│  │  (operator)  │         │  (pg-clusters)        │         │
+│  └──────┬───────┘         └──────────┬───────────┘         │
+│         │                            │                      │
+└─────────┼────────────────────────────┼──────────────────────┘
+          │                            │
+          ▼                            ▼
+┌──────────────────┐      ┌────────────────────────────┐
+│   Helm Chart     │      │   PostgreSQL CR            │
+│   (Operator +    │      │   (cluster spec: team,     │
+│    CRDs)         │      │    volume, instances)      │
+│                  │      └────────────┬───────────────┘
+└────────┬─────────┘                   │
+         │                             │
+         ▼                             ▼
+┌──────────────────┐      ┌────────────────────────────┐
+│  PG Operator     │─────▶│  StatefulSet (managed)     │
+│  (controller)    │      │                            │
+│                  │      │  ┌──────────────────────┐  │
+│  Watches:        │      │  │  Spilo Container     │  │
+│  - postgresql CRs│      │  │  (Patroni + PG 15)   │  │
+│  - CRDs         │      │  │                      │  │
+│                  │      │  │  Requires:           │  │
+└──────────────────┘      │  │  - SYS_NICE          │  │
+                          │  │  - NET_BIND_SERVICE  │  │
+                          │  └──────────────────────┘  │
+                          └────────────────────────────┘
+....
+
+The operator manages the full lifecycle: it watches PostgreSQL Custom Resources, creates StatefulSets, configures Patroni for leader election, and manages Spilo containers that bundle PostgreSQL with Patroni.
+
+== Investigation
+
+My investigation followed the symptoms upstream through the GitOps pipeline.
+
+=== Step 1: ArgoCD Sync Status
+
+The ArgoCD UI showed the operator Application as `OutOfSync` with a diff on the `OperatorConfiguration` resource. Fields like `kubernetes_use_configmaps` and `enable_pgbouncer` appeared in the live state but weren't in our Helm values.
+
+[source,bash]
+----
+$ argocd app diff postgres-operator --local ./charts/postgres-operator
+--- Live
++++ Desired
+@@ -42,6 +42,4 @@
+   kubernetes_use_configmaps: "false"
+-  major_version_upgrade_mode: "manual"
+-  enable_pgbouncer: "true"
+   min_instances: "1"
+----
+
+These fields were _defaults injected by the new operator version_ into the OperatorConfiguration CRD. ArgoCD saw them as drift because they weren't declared in our Helm chart.
+
+=== Step 2: CRD Schema Investigation
+
+I compared the CRD schemas between operator versions:
+
+[source,bash]
+----
+$ kubectl get crd operatorconfigurations.acid.zalan.do -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema.properties.configuration.properties}' | jq 'keys' | wc -l
+94
+
+# Previous version had 87 properties
+----
+
+The new operator version added 7 new configuration properties to the CRD schema with default values. When the operator reconciled, it wrote these defaults to the live resource, creating the ArgoCD diff.
+
+=== Step 3: PostgreSQL Cluster Failures
+
+While the sync issue was cosmetic, the real problem was workload health. Spilo containers were crashing:
+
+[source,bash]
+----
+$ kubectl get pods -l application=spilo -n databases
+NAME                     READY   STATUS             RESTARTS   AGE
+acid-main-db-0           0/1     CrashLoopBackOff   4          8m
+acid-main-db-1           0/1     CrashLoopBackOff   4          8m
+acid-main-db-2           0/1     CrashLoopBackOff   3          6m
+----
+
+=== Step 4: Container Logs
+
+[source,bash]
+----
+$ kubectl logs acid-main-db-0 -n databases --previous
+2024-01-15 09:23:01,234 INFO: Starting Patroni...
+2024-01-15 09:23:01,456 ERROR: Failed to set process scheduling priority
+2024-01-15 09:23:01,457 FATAL: Operation not permitted - capability SYS_NICE required
+2024-01-15 09:23:01,458 INFO: Shutting down...
+----
+
+The container was failing because it couldn't set process scheduling priority — a Linux capability issue.
+
+=== Step 5: SecurityContext Analysis
+
+I compared the StatefulSet spec between the working (pre-upgrade) and failing (post-upgrade) state:
+
+[source,bash]
+----
+$ kubectl get sts acid-main-db -n databases -o jsonpath='{.spec.template.spec.containers[0].securityContext}' | jq .
+{
+  "allowPrivilegeEscalation": false,
+  "runAsNonRoot": true,
+  "runAsUser": 101,
+  "capabilities": {
+    "drop": ["ALL"]
+  }
+}
+----
+
+The new operator version introduced a hardened default SecurityContext that drops ALL capabilities. The previous version didn't set `capabilities.drop` at all, inheriting the container runtime defaults which included `SYS_NICE`.
+
+=== Step 6: Confirming the Capability Requirement
+
+Spilo's entrypoint calls `nice -n -5` to prioritize the PostgreSQL process. This requires `SYS_NICE`. Patroni also uses `NET_BIND_SERVICE` when configured to bind to privileged ports for PgBouncer sidecar communication.
+
+[source,bash]
+----
+$ kubectl exec -it acid-main-db-0 -n databases -- cat /proc/1/status | grep Cap
+CapInh: 0000000000000000
+CapPrm: 0000000000000000
+CapEff: 0000000000000000
+----
+
+Zero effective capabilities confirmed the issue.
+
+== Root Cause
+
+The upgrade introduced two breaking changes that interacted:
+
+1. **CRD schema expansion** — The new OperatorConfiguration CRD added fields with default values. The operator wrote these defaults to the live resource on first reconciliation, causing ArgoCD to report drift (the Helm chart didn't declare these fields).
+
+2. **Hardened SecurityContext defaults** — The new operator version template for StatefulSets included `capabilities.drop: ["ALL"]` without adding back `SYS_NICE` and `NET_BIND_SERVICE`. Spilo containers require these capabilities for process priority management and Patroni networking.
+
+The combination meant: ArgoCD couldn't sync cleanly (cosmetic but alarming), AND the operator's reconciled workloads crashed (actual outage).
+
+== Solution
+
+The fix required changes at three layers:
+
+=== 1. SecurityContext — Add Required Capabilities
+
+Added explicit capability grants in the PostgreSQL CR:
+
+[source,yaml]
+----
+apiVersion: acid.zalan.do/v1
+kind: postgresql
+metadata:
+  name: acid-main-db
+spec:
+  patroni:
+    # ... existing config
+  podAnnotations:
+    # ... existing annotations
+  additionalPodCapabilities:
+    - SYS_NICE
+  securityContext:
+    capabilities:
+      add:
+        - SYS_NICE
+        - NET_BIND_SERVICE
+      drop:
+        - ALL
+----
+
+=== 2. ArgoCD Resource Tracking — Ignore Operator-Managed Fields
+
+Configured ArgoCD to ignore fields that the operator manages independently:
+
+[source,yaml]
+----
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres-operator
+spec:
+  ignoreDifferences:
+    - group: acid.zalan.do
+      kind: OperatorConfiguration
+      jsonPointers:
+        - /configuration/kubernetes_use_configmaps
+        - /configuration/enable_pgbouncer
+        - /configuration/major_version_upgrade_mode
+----
+
+=== 3. CRD Version Pinning — Align Chart and Cluster
+
+Pinned the CRD version in our Helm chart to match the operator version exactly, preventing schema drift:
+
+[source,yaml]
+----
+# values.yaml
+crd:
+  create: true
+  version: "v1.10.0"  # Must match operator image tag
+----
+
+== Trade-offs
+
+[cols="1,1"]
+|===
+| Gained | Sacrificed
+
+| Explicit capability declarations — security posture is documented
+| Slightly expanded attack surface vs. dropping everything
+
+| ArgoCD `ignoreDifferences` — stable sync status
+| Reduced visibility into operator configuration drift
+
+| CRD version pinning — deterministic upgrades
+| Manual intervention required for each operator version bump
+
+| Documented upgrade runbook
+| Additional operational overhead per upgrade
+|===
+
+The primary trade-off is **upgrade agility vs. stability**. By pinning versions and explicitly declaring capabilities, we gain predictability but lose the ability to "just bump the version number." For a stateful workload managing production databases, this trade-off is correct.
+
+== Result
+
+* PostgreSQL HA restored within 45 minutes of investigation start
+* ArgoCD reported `Synced` and `Healthy` across all PostgreSQL Applications
+* Zero data loss — Patroni leader election worked correctly once containers started
+* Created a 12-step upgrade runbook covering CRD diff review, capability audit, and staged rollout
+* Runbook used successfully for the subsequent v1.10.1 patch upgrade with zero incidents
+
+== Lessons Learned
+
+1. **CRD lifecycle is deployment infrastructure** — CRDs aren't "just schemas"; they carry defaults that can break GitOps reconciliation. Treat CRD upgrades with the same rigor as database migrations.
+
+2. **GitOps and operators have competing reconciliation loops** — ArgoCD wants declarative state from Git; operators want to manage state themselves. The `ignoreDifferences` mechanism exists for exactly this tension. Design it upfront, not during an incident.
+
+3. **Kubernetes SecurityContexts are not optional for stateful workloads** — Container hardening is necessary, but `drop: ALL` without auditing what the workload needs is a guaranteed outage for anything beyond a stateless web server.
+
+4. **Linux capabilities are the unit of privilege** — Understanding which capabilities (`SYS_NICE`, `NET_BIND_SERVICE`, `SYS_PTRACE`) your containers actually need is platform engineering, not security theater.
+
+5. **Operator upgrades are multi-layer changes** — An operator version bump touches: CRDs, RBAC, controller logic, reconciled resource templates, and default configurations. Each layer needs independent verification.
+
+---
+
+_Related engineering context:_
+
+* xref:platform-engineering:kubernetes.adoc[Kubernetes Operations] — Scheduling, security contexts, and workload management patterns
+* xref:reliability:observability.adoc[Observability] — How we detected the cascading failure through metrics and alerting

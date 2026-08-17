@@ -1,0 +1,120 @@
+= AWS Infrastructure Architecture
+:page-role: architecture
+:description: Multi-account AWS architecture with VPC networking, security layers, cost governance, and air-gapped patterns for production Kubernetes workloads
+:keywords: AWS, multi-account, VPC, Transit Gateway, IAM, KMS, cost governance, EKS, security
+
+[.lead]
+_AWS architecture isn't about using services — it's about drawing blast radius boundaries so a bad deploy in one account doesn't take down another._
+
+== Multi-Account Strategy
+
+....
+┌─────────────────────────────────────────────────────────┐
+│                  AWS Organization                         │
+│                                                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │  Management │  │   Security  │  │   Shared     │     │
+│  │  Account    │  │   Account   │  │   Services   │     │
+│  │  (billing)  │  │  (GuardDuty │  │  (ECR, DNS,  │     │
+│  │             │  │   CloudTrl) │  │   artifacts) │     │
+│  └─────────────┘  └─────────────┘  └─────────────┘     │
+│                                                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │  Dev/QA     │  │  Staging    │  │  Production  │     │
+│  │  Account    │  │  Account    │  │  Account     │     │
+│  │  (EKS +     │  │  (EKS +     │  │  (EKS +      │     │
+│  │   workloads)│  │   workloads)│  │   workloads) │     │
+│  └─────────────┘  └─────────────┘  └─────────────┘     │
+│                                                           │
+│  ──────── Transit Gateway (inter-account routing) ──────  │
+└─────────────────────────────────────────────────────────┘
+....
+
+=== Why Separate Accounts
+
+* **Blast radius isolation**: a misconfigured security group in dev can't affect production
+* **Cost attribution**: per-account billing without tagging discipline
+* **IAM boundary**: no cross-account access without explicit AssumeRole
+* **Service quotas**: one account hitting EC2 limits doesn't block another
+
+== VPC Networking
+
+=== Private-Only Architecture
+
+Production VPCs have *no internet gateway*. All egress goes through VPC endpoints or (where unavoidable) a centralized egress VPC with inspection.
+
+=== VPC Endpoints (Air-Gapped Pattern)
+
+|===
+| Endpoint | Type | Purpose
+
+| com.amazonaws.*.ecr.api | Interface | Pull container images
+| com.amazonaws.*.ecr.dkr | Interface | Docker registry protocol
+| com.amazonaws.*.s3 | Gateway | Terraform state, backups, ECR layers
+| com.amazonaws.*.sts | Interface | IRSA token exchange
+| com.amazonaws.*.ssm | Interface | Parameter Store, Session Manager
+| com.amazonaws.*.logs | Interface | CloudWatch Logs
+| com.amazonaws.*.monitoring | Interface | CloudWatch Metrics
+|===
+
+=== Transit Gateway
+
+Inter-account communication flows through Transit Gateway with route table segmentation:
+
+* Dev/QA → Shared Services: *allowed* (pull artifacts)
+* Production → Shared Services: *allowed* (pull images, DNS)
+* Dev/QA → Production: *denied* (hard boundary)
+* All → Security Account: *allowed* (log shipping)
+
+== Security Layers
+
+=== IAM: Least Privilege in Practice
+
+* **No long-lived credentials**: IRSA for pods, Instance Profiles for nodes, SSO for humans
+* **Permission boundaries**: prevent privilege escalation even if a role is over-provisioned
+* **Service control policies (SCPs)**: org-level guardrails (no public S3, no root usage)
+
+=== Encryption
+
+* **At rest**: KMS CMK per account, automatic key rotation
+* **In transit**: TLS everywhere, ACM certificates on ALBs
+* **Secrets**: AWS Secrets Manager → External Secrets Operator → Kubernetes Secrets
+
+=== Network Security
+
+Layered defense:
+
+1. **Security Groups**: instance-level firewall, source-based rules
+2. **Network ACLs**: subnet-level, stateless deny rules for known-bad ranges
+3. **VPC Flow Logs**: all traffic logged to S3 for forensics
+4. **GuardDuty**: anomaly detection across accounts
+
+== Cost Governance
+
+=== Patterns That Save Money
+
+* **Savings Plans** over Reserved Instances: flexible commitment across instance families
+* **Karpenter spot + on-demand mix**: 70% spot for stateless workloads, on-demand for stateful
+* **S3 Intelligent-Tiering**: automatic lifecycle for backup and log data
+* **Right-sizing feedback loop**: CloudWatch → recommendations → Karpenter constraints
+
+=== Tagging Strategy
+
+|===
+| Tag Key | Purpose | Enforcement
+
+| team | Cost allocation | SCP-enforced on resource creation
+| environment | Dev/staging/prod segregation | Required by Terraform modules
+| service | Per-service cost breakdown | Kubernetes label → AWS tag propagation
+|===
+
+== Design Rationale
+
+* **Transit Gateway over VPC Peering**: scales beyond 2-VPC mesh, centralized routing
+* **VPC Endpoints over NAT Gateway**: cheaper at scale, eliminates internet path for sensitive traffic
+* **Separate accounts over account-level tagging**: hard boundaries > soft boundaries for compliance
+
+== Related
+
+* xref:case-studies:kubernetes-platform.adoc[Case Study: Air-Gapped Kubernetes Platform]
+* xref:platform-engineering:aws.adoc[AWS Cloud Engineering]

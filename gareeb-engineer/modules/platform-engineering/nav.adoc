@@ -1,0 +1,7 @@
+.Platform Engineering
+* xref:kubernetes.adoc[Kubernetes Operations]
+* xref:helm.adoc[Helm Engineering]
+* xref:argocd.adoc[ArgoCD & GitOps]
+* xref:terraform.adoc[Terraform & IaC]
+* xref:aws.adoc[AWS Cloud Engineering]
+* xref:developer-platform.adoc[Developer Platform]

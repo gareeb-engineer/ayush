@@ -1,1 +1,13 @@
-* xref:index.adoc[Home2]
+* xref:index.adoc[Home]
+* xref:about.adoc[About]
+* xref:experience.adoc[Experience]
+* xref:skills.adoc[Skills]
+* xref:contact.adoc[Contact]
+
+.Explore
+* xref:case-studies:postgres-operator-upgrade.adoc[Case Studies]
+* xref:platform-engineering:kubernetes.adoc[Platform Engineering]
+* xref:software-engineering:java.adoc[Software Engineering]
+* xref:devops:cicd.adoc[DevOps & Delivery]
+* xref:reliability:observability.adoc[Reliability]
+* xref:architecture:decisions.adoc[Architecture]

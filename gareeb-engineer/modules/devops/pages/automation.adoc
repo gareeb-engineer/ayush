@@ -1,0 +1,95 @@
+= Infrastructure Automation
+:page-role: engineering
+:description: Production automation patterns — self-healing systems, runbook automation, scripting discipline, and toil reduction strategies for platform teams
+:keywords: infrastructure automation, self-healing, runbook automation, toil reduction, idempotent scripts, ChatOps, Ansible, scripting, SRE
+
+[.lead]
+_Automation is not writing a script once. It is building a system that handles the 3 AM page so you do not have to._
+
+== Overview
+
+Every platform team accumulates toil: manual certificate rotations, disk cleanup scripts run by hand, pod restarts after known OOM patterns, on-call runbooks that say "SSH into the node and run X."
+
+Automation is the discipline of converting that toil into code — code that is tested, idempotent, observable, and does not require a human in the loop. The goal is not zero human involvement (some decisions require judgment), but zero human involvement for _known, repeatable_ remediation.
+
+== Key Patterns
+
+=== Pattern 1: Idempotent Scripts — Run It Twice, Get the Same Result
+
+The first rule of production automation: every script must be safe to run multiple times without side effects.
+
+*Why this matters*: Automation that runs on triggers (alerts, cron, webhooks) _will_ fire multiple times due to retries, duplicate events, or operator error. Non-idempotent automation creates cascading failures.
+
+*Implementation principles*:
+- Check state before mutating: "Is the certificate already valid? Skip renewal."
+- Use declarative tools where possible (Terraform, Kubernetes) — they are idempotent by design
+- For imperative scripts: guard every action with a precondition check
+- Log what was skipped as clearly as what was executed
+
+*Anti-pattern*: A cleanup script that deletes old pods without checking if new ones are healthy. Run it during a deployment, and it kills the only running instances.
+
+=== Pattern 2: Automation Testing — Test Your Automation
+
+Automation code is production code. Untested automation is a liability.
+
+*Testing layers*:
+....
+┌────────────────────────────────────────┐
+│  Unit Tests                            │
+│  (Logic: date parsing, threshold calc) │
+├────────────────────────────────────────┤
+│  Dry-Run Mode                          │
+│  (Script runs, logs actions, mutates   │
+│   nothing — validate in production)    │
+├────────────────────────────────────────┤
+│  Integration Tests                     │
+│  (Run against disposable env: kind     │
+│   cluster, localstack, test namespace) │
+├────────────────────────────────────────┤
+│  Chaos Validation                      │
+│  (Trigger the failure condition, let   │
+│   automation respond, verify outcome)  │
+└────────────────────────────────────────┘
+....
+
+*Dry-run is non-negotiable*: Every automation script should support `--dry-run` that logs exactly what it would do without executing. This is your safety net for reviewing automation behavior against real production state.
+
+=== Pattern 3: Self-Healing with Kubernetes Operators
+
+Instead of scripts that react to alerts, encode remediation logic as Kubernetes controllers.
+
+*When to use controllers over scripts*:
+- Remediation is triggered by cluster state changes (not external events)
+- The remediation is always the same for a given state (deterministic)
+- You need continuous reconciliation, not one-shot execution
+
+*Examples from production*:
+- Certificate renewal controller: watches cert expiry, triggers renewal 30 days before expiry
+- PVC cleanup controller: detects orphaned PVCs from deleted StatefulSets, archives and removes
+- Node cordon controller: watches node conditions, cordons nodes with disk pressure before pods get evicted chaotically
+
+*Trade-off*: Controllers are more complex to write and debug than scripts. Use scripts for one-off or rare events, controllers for continuous state management.
+
+== Production Considerations
+
+*Reducing toil systematically*: Track toil formally. If a task is manual, repetitive, automatable, and grows with scale — it is toil. Prioritize automation by (frequency × time-per-occurrence × risk-of-human-error).
+
+*ChatOps for visibility*: Automation that runs silently is automation nobody trusts. Post to Slack/Teams: "Certificate renewed for service-x.example.com — expires 2025-03-15 → 2026-03-15." Humans stay informed without being in the loop.
+
+*Blast radius control*: Automation that touches production must have scope limits. A node-drain script should drain one node at a time with health checks between each. Never automate "fix everything at once."
+
+*Credential management for automation*: Automation service accounts need least-privilege access. Use Kubernetes ServiceAccounts with scoped RBAC, not cluster-admin. Rotate automation credentials on schedule.
+
+== Troubleshooting
+
+*Automation flapping*: Script triggers remediation → condition clears → condition returns → script triggers again. Root cause: the automation is treating symptoms, not cause. Add cooldown periods and escalation ("if this triggers 3x in 1 hour, page a human").
+
+*Silent failures*: Automation ran, exited 0, but did nothing useful. Always validate post-conditions, not just exit codes. "Certificate renewed" means checking the new expiry, not that `certbot` exited cleanly.
+
+*Permission creep*: Automation service accounts accumulate permissions over time as new scripts are added. Audit quarterly with `kubectl auth can-i --list --as=system:serviceaccount:automation:sa-name`.
+
+== Related
+
+* xref:case-studies:gitops-platform.adoc[Case Study: GitOps Delivery Platform]
+* xref:devops:cicd.adoc[CI/CD Architecture]
+* xref:reliability:observability.adoc[Observability Engineering]

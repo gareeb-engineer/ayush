@@ -4,9 +4,10 @@ version: v1.0
 display_version: 'dev'
 start_page: ROOT:index.adoc
 nav:
-- modules/Java/nav.adoc
-- modules/Arcitecture-diagram/nav.adoc
-- modules/DevOps-Refs/nav.adoc
-- modules/System-design/nav.adoc
-- modules/AI/nav.adoc
-- modules/WorkExperience/nav.adoc
+- modules/ROOT/nav.adoc
+- modules/case-studies/nav.adoc
+- modules/platform-engineering/nav.adoc
+- modules/software-engineering/nav.adoc
+- modules/devops/nav.adoc
+- modules/reliability/nav.adoc
+- modules/architecture/nav.adoc

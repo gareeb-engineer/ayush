@@ -1,0 +1,53 @@
+= Experience
+:page-role: experience
+:description: Work history with outcome-first bullets organized by engineering track
+:keywords: Java, DevOps, Platform Engineering, Kubernetes, AWS, Spring Boot, Experience
+
+[.lead]
+Reverse-chronological work history. Each bullet follows the format: *Action → System/Scale → Result*.
+
+== Software & Platform Engineer — [YOUR_COMPANY]
+_2020 – Present · [Brief company context — e.g., enterprise SaaS / fintech / product company]_
+
+[#air-gapped-platform]
+=== Backend Development
+
+* *[Java]* Designed and implemented Spring Boot microservices with JDBC-level tracing instrumentation → distributed monolith serving [YOUR_METRIC] requests/day → reduced mean-time-to-debug by integrating OpenTelemetry spans at every DB call
+* *[Java]* Built RESTful API layer for internal platform services → standardized data contract across 4+ consuming teams → decreased integration defects by [YOUR_METRIC]%
+* *[Java]* Optimized JVM configuration and connection pool tuning for PostgreSQL-backed services → production workload on EKS → improved P99 latency from [YOUR_METRIC]ms to [YOUR_METRIC]ms
+
+[#observability-stack]
+=== Infrastructure & Reliability
+
+* *[DevOps]* Implemented end-to-end distributed tracing with OpenTelemetry + Jaeger v2 → Java services and JDBC calls across [YOUR_METRIC] microservices → achieved full request lifecycle visibility in production
+* *[DevOps]* Built Prometheus + Grafana monitoring dashboards → cluster-wide metrics covering nodes, pods, JVM and PostgreSQL → cut incident detection time from [YOUR_METRIC] min to [YOUR_METRIC] min
+* *[DevOps]* Automated x509 certificate lifecycle (creation, renewal, deletion) using OpenSSL and Keytool → all service-to-service TLS in the platform → zero certificate-expiry incidents over [YOUR_METRIC] months
+* *[DevOps]* Deployed and managed PostgreSQL on Kubernetes using the PostgreSQL Operator (Patroni/Spilo) → HA database serving production traffic → [YOUR_METRIC]% uptime with automated failover
+
+[#k8s-platform]
+=== Team & Process
+
+* *[Platform]* Architected and delivered a fully air-gapped Kubernetes environment → production-grade EKS cluster with no internet egress → enabled secure workload deployment for compliance-restricted teams
+* *[Platform]* Designed GitOps deployment workflows with ArgoCD + Helm → [YOUR_METRIC] application deployments/week → reduced manual deployment effort by [YOUR_METRIC]%
+* *[Platform]* Introduced Litmus Chaos experiments into the platform → tested pod-failure, network-partition, and node-drain scenarios → improved system resilience score by [YOUR_METRIC]%
+* *[Platform]* Established AWS infrastructure patterns (API Gateway, EC2, S3, RDS, CloudWatch, CloudTrail) → repeatable IaC modules → onboarded [YOUR_METRIC] new services with zero infrastructure drift
+
+---
+
+== Junior Software Engineer — [YOUR_PREVIOUS_COMPANY]
+_2019 – 2020 · [Brief company context]_
+
+=== Backend Development
+
+* *[Java]* Developed core application modules using Java and Spring Boot → REST APIs serving internal business logic → delivered [YOUR_METRIC] features in first year
+* *[Java]* Implemented data access layer with PostgreSQL → normalized schema design → supported [YOUR_METRIC] concurrent users
+
+=== Infrastructure & Reliability
+
+* *[DevOps]* Set up CI/CD pipelines with Jenkins → automated build, test, and deploy stages → reduced release cycle from [YOUR_METRIC] days to [YOUR_METRIC] hours
+* *[DevOps]* Containerized legacy applications using Docker → migrated to container-based deployment → cut environment setup time from days to minutes
+
+=== Team & Process
+
+* *[Platform]* Wrote technical documentation for deployment runbooks → standardized team onboarding → reduced new-member ramp-up by [YOUR_METRIC] weeks
+

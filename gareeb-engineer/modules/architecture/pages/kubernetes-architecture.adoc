@@ -1,0 +1,104 @@
+= Kubernetes Platform Architecture
+:page-role: architecture
+:description: Production EKS cluster architecture — VPC CNI networking, storage classes, multi-tenancy, and topology decisions for air-gapped and multi-team environments
+:keywords: Kubernetes, EKS, VPC CNI, storage classes, multi-tenancy, RBAC, network policies, cluster topology
+
+[.lead]
+_The architecture of a Kubernetes platform isn't about "deploying pods" — it's about designing a system where 15 teams deploy independently without stepping on each other._
+
+== Cluster Topology
+
+....
+┌──────────────────────────────────────────────────────────────────┐
+│                         AWS Account                                │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │                    VPC (10.0.0.0/16)                        │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │  │
+│  │  │ Private Sub A │  │ Private Sub B │  │ Private Sub C │     │  │
+│  │  │  10.0.1.0/24 │  │  10.0.2.0/24 │  │  10.0.3.0/24 │     │  │
+│  │  │  ┌────────┐  │  │  ┌────────┐  │  │  ┌────────┐  │     │  │
+│  │  │  │Worker  │  │  │  │Worker  │  │  │  │Worker  │  │     │  │
+│  │  │  │Nodes   │  │  │  │Nodes   │  │  │  │Nodes   │  │     │  │
+│  │  │  └────────┘  │  │  └────────┘  │  │  └────────┘  │     │  │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘     │  │
+│  │                                                             │  │
+│  │  ┌────────────────────────────────────────────────────┐    │  │
+│  │  │  EKS Control Plane (AWS-managed, multi-AZ)         │    │  │
+│  │  └────────────────────────────────────────────────────┘    │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                                                    │
+│  VPC Endpoints: ECR, S3, STS, SSM, CloudWatch Logs                │
+└──────────────────────────────────────────────────────────────────┘
+....
+
+=== Why Private-Only Subnets
+
+No public subnets in production clusters. Worker nodes communicate with the EKS API server through a VPC endpoint. Container images come through ECR VPC endpoints. This eliminates NAT Gateway costs for image pulls and removes any accidental public exposure.
+
+=== Node Groups Strategy
+
+Separate managed node groups by workload class:
+
+* **System nodes** — CoreDNS, kube-proxy, ArgoCD, monitoring (tainted, toleration-only)
+* **Application nodes** — business workloads, auto-scaled by Karpenter
+* **Stateful nodes** — PostgreSQL, Kafka (local NVMe, no spot)
+
+== Networking: VPC CNI
+
+AWS VPC CNI assigns real VPC IPs to pods — no overlay network, no encapsulation overhead.
+
+=== Trade-offs
+
+* *Pro*: Native VPC routing, SecurityGroup-for-pods, direct ALB target registration
+* *Con*: IP exhaustion in small subnets — solved by secondary CIDR ranges (100.64.0.0/16)
+* *Con*: Prefix delegation required at scale (>100 pods/node)
+
+=== Network Policies
+
+Calico network policies enforce namespace isolation. Default deny-all ingress per namespace, explicit allow rules for known service-to-service communication.
+
+== Storage Architecture
+
+=== Storage Classes
+
+|===
+| Class | Provisioner | Use Case | Reclaim
+
+| gp3-default | ebs.csi.aws.com | General workloads | Delete
+| io2-database | ebs.csi.aws.com | PostgreSQL, high IOPS | Retain
+| efs-shared | efs.csi.aws.com | Shared config, ML models | Retain
+|===
+
+=== Stateful Workload Patterns
+
+PostgreSQL on Kubernetes uses `io2` volumes with `volumeBindingMode: WaitForFirstConsumer` to co-locate PVCs with pods in the same AZ. WAL-G handles backup to S3 — storage class handles IOPS, not durability.
+
+== Multi-Tenancy Model
+
+....
+Namespace: team-payments
+├── ResourceQuota (cpu: 8, memory: 32Gi)
+├── LimitRange (default: 500m/1Gi, max: 2/4Gi)
+├── NetworkPolicy (deny-all + allow team-payments/*)
+├── RBAC: RoleBinding → team-payments-developers
+└── ServiceAccount (IRSA → arn:aws:iam::ACCT:role/team-payments)
+....
+
+=== Isolation Layers
+
+1. **Namespace boundaries** — logical isolation, resource quotas
+2. **RBAC** — team-scoped roles, no cluster-admin for application teams
+3. **Network policies** — Calico deny-all default, explicit allowlists
+4. **IRSA** — per-namespace IAM roles, no shared credentials
+5. **Pod Security Standards** — restricted profile, no privileged containers
+
+== Design Decisions
+
+* **EKS over self-managed**: Control plane is someone else's problem. We focus on workloads.
+* **VPC CNI over Calico IPAM**: Native AWS integration wins when you need SecurityGroup-for-pods and direct ALB routing.
+* **Karpenter over Cluster Autoscaler**: Faster scaling, right-sized instances, consolidation built-in.
+
+== Related
+
+* xref:case-studies:kubernetes-platform.adoc[Case Study: Air-Gapped Kubernetes Platform]
+* xref:platform-engineering:kubernetes.adoc[Kubernetes Operations]

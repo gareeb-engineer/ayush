@@ -1,0 +1,361 @@
+= Spring Boot Request Lifecycle and Servlet Container
+:toc:
+:toclevels: 3
+:source-highlighter: rouge
+
+== Overview
+
+This document explains:
+
+* What a Servlet Container is
+* How a request flows through Spring Boot
+* The role of DispatcherServlet
+* Filters, Interceptors, HandlerMappings, HandlerAdapters
+* Data Binding, Validation, and Message Conversion
+
+== What is a Servlet Container?
+
+A Servlet Container (also called a Web Container) is the runtime environment responsible for managing Java Servlets.
+
+Without a servlet container, Spring MVC's DispatcherServlet would never receive HTTP requests.
+
+=== Responsibilities
+
+A servlet container:
+
+* Listens for HTTP requests
+* Creates HttpServletRequest and HttpServletResponse objects
+* Executes servlet filters
+* Routes requests to servlets
+* Manages servlet lifecycle
+* Manages request-processing threads
+* Returns responses to clients
+
+=== Common Servlet Containers
+
+* Apache Tomcat (default in Spring Boot)
+* Jetty
+* Undertow
+
+=== High-Level Flow
+
+[source,text]
+----
+Browser
+   |
+   v
+Servlet Container (Tomcat)
+   |
+   v
+DispatcherServlet
+   |
+   v
+Controller
+----
+
+== Spring Boot Request Lifecycle
+
+=== High-Level Flow
+
+[source,text]
+----
+Client
+  |
+  v
+Embedded Server (Tomcat)
+  |
+  v
+Filter Chain
+  |
+  v
+DispatcherServlet
+  |
+  v
+Handler Mapping
+  |
+  v
+Interceptor (preHandle)
+  |
+  v
+Handler Adapter
+  |
+  v
+Argument Resolvers
+  |
+  v
+Data Binding + Validation
+  |
+  v
+Controller
+  |
+  v
+Return Value Handler
+  |
+  v
+HttpMessageConverter
+  |
+  v
+Interceptor (postHandle)
+  |
+  v
+Interceptor (afterCompletion)
+  |
+  v
+Response
+----
+
+== Diagram
+
+
+== Detailed Explanation
+
+=== 1. Embedded Servlet Container
+
+Spring Boot starts an embedded servlet container such as Tomcat.
+
+Responsibilities:
+
+* Accept incoming HTTP requests
+* Open and manage network connections
+* Create request/response objects
+
+=== 2. Servlet Filters
+
+Filters execute before the request reaches Spring MVC.
+
+Examples:
+
+* Logging
+* CORS
+* Spring Security
+* Custom request processing
+
+Example:
+
+[source,java]
+----
+@Component
+public class LoggingFilter implements Filter {
+    @Override
+    public void doFilter(
+            ServletRequest request,
+            ServletResponse response,
+            FilterChain chain) {
+
+        System.out.println("Before request");
+        chain.doFilter(request, response);
+        System.out.println("After request");
+    }
+}
+----
+
+=== 3. DispatcherServlet
+
+DispatcherServlet is Spring MVC's Front Controller.
+
+Responsibilities:
+
+* Receive requests from the servlet container
+* Find matching controllers
+* Invoke controller methods
+* Generate responses
+
+=== 4. HandlerMapping
+
+HandlerMapping identifies the controller method that should process the request.
+
+Example:
+
+[source,java]
+----
+@RestController
+@RequestMapping("/users")
+public class UserController {
+
+    @GetMapping
+    public int method() {
+        return 1;
+    }
+}
+----
+
+For GET /users, Spring resolves UserController.method().
+
+=== 5. Interceptors
+
+Interceptors execute around controller invocation.
+
+Methods:
+
+* preHandle()
+* postHandle()
+* afterCompletion()
+
+Typical uses:
+
+* Authentication
+* Auditing
+* Logging
+* Metrics
+
+=== 6. HandlerAdapter
+
+DispatcherServlet does not invoke controller methods directly.
+
+HandlerAdapter:
+
+* Prepares method invocation
+* Resolves arguments
+* Executes the handler
+
+=== 7. Argument Resolvers
+
+Spring resolves controller parameters before invocation.
+
+Examples:
+
+[source,java]
+----
+@GetMapping("/{id}")
+public User getUser(
+        @PathVariable Long id,
+        @RequestParam String name) {
+}
+----
+
+Resolvers support:
+
+* @PathVariable
+* @RequestParam
+* @RequestHeader
+* @CookieValue
+* @RequestBody
+
+=== 8. Data Binding and Validation
+
+JSON requests are converted into Java objects.
+
+Example:
+
+[source,json]
+----
+{
+  "name": "John"
+}
+----
+
+[source,java]
+----
+@PostMapping
+public User create(@Valid @RequestBody UserDto dto) {
+}
+----
+
+Spring performs:
+
+* JSON -> Java conversion
+* Validation using Bean Validation
+
+Common annotations:
+
+[source,java]
+----
+@NotNull
+@NotBlank
+@Size
+----
+
+=== 9. Controller Execution
+
+The controller method is finally invoked.
+
+[source,java]
+----
+@GetMapping
+public int method() {
+    return 1;
+}
+----
+
+=== 10. Return Value Handling
+
+The controller return value is processed by a ReturnValueHandler.
+
+=== 11. HttpMessageConverter
+
+Objects returned from controllers are converted to JSON.
+
+Example:
+
+[source,java]
+----
+@GetMapping
+public User getUser() {
+    return new User();
+}
+----
+
+Converted to:
+
+[source,json]
+----
+{
+  "id": 1,
+  "name": "John"
+}
+----
+
+Typically handled by Jackson through MappingJackson2HttpMessageConverter.
+
+=== 12. Response Processing
+
+After controller execution:
+
+* postHandle() executes
+* Response is generated
+* afterCompletion() executes
+* Filters complete processing
+* Response is returned to the client
+
+=== Spring Security Perspective
+
+Spring Security usually executes before DispatcherServlet.
+
+[source,text]
+----
+Request
+   |
+   v
+Tomcat
+   |
+   v
+Spring Security Filter Chain
+   |
+   v
+DispatcherServlet
+   |
+   v
+Controller
+----
+
+This is why authentication and authorization typically happen before controller methods are executed.
+
+=== Summary
+
+A Spring Boot request typically flows through:
+
+1. Embedded Servlet Container
+2. Servlet Filters
+3. Spring Security Filter Chain
+4. DispatcherServlet
+5. HandlerMapping
+6. Interceptors
+7. HandlerAdapter
+8. Argument Resolvers
+9. Data Binding and Validation
+10. Controller Method
+11. Return Value Handler
+12. HttpMessageConverter
+13. Response
+
+The embedded servlet container (such as Tomcat) receives HTTP requests and hosts Spring's DispatcherServlet, which acts as the front controller for Spring MVC.

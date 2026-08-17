@@ -1,0 +1,43 @@
+**Authentication & Authorization**
+
+**JWT**
+
+**API Key**
+
+**Session ID**: A session ID is a unique identifier for a user's login session.
+
+**Session Data**: Session data is the information stored on the server and associated with a session ID.
+
+**Cookie**: A cookie is just a small piece of data stored by the browser and automatically sent with requests to the same website.
+
+**Refresh Token**: A refresh token is used to obtain new access tokens without requiring the user to log in again.
+
+
+
+Flow:
+
+Browser
+  ↓
+session_id=abc123
+  ↓
+Server
+  ↓
+Redis lookup
+  ↓
+Gets session data
+  ↓
+Knows user is authenticated
+
+
+So: 
+Session ID  → key
+Session Data → value
+
+Use Cases:
+
+If you're building:
+
+A web application with your own frontend and backend: server-side sessions (Redis + secure cookies) are often the simplest choice.
+A mobile app, SPA, or API platform: short-lived JWT access tokens + server-side refresh sessions is usually the best balance.
+
+That's why many large services effectively authenticate requests with JWTs, while using server-side sessions/refresh tokens to control and revoke those JWTs.

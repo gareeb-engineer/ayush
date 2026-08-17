@@ -1,0 +1,65 @@
+= System Design Tools Reference
+
+
+== ETCD and Zookeeper
+
+== Caching Solutions
+
+=== Redis
+
+Best for:: Multiple servers, shared state
+
+* User session storage (login across multiple app servers)
+* Shopping cart (persist across devices)
+* Leaderboards / real-time counters
+* OTP / token blacklist after logout
+
+=== Hazelcast
+
+Best for:: Distributed but no infra team
+
+* Shared job state across microservice instances
+* Distributed locks (prevent two servers doing same task)
+* Real-time event processing cache
+
+=== Caffeine
+
+Best for:: Single server, speed is priority
+
+* OTP validation cache (expire in 5 mins)
+* Rate limiting (track API calls per user)
+* Config/feature flags cache (reload every hour)
+
+=== Ehcache
+
+Best for:: Enterprise, large datasets
+
+* Insurance/banking rule engine cache (complex objects, large size)
+* Report data cache that spills to disk when memory full
+* Offline-capable caching (survives app restart via disk)
+
+
+
+Messaging Queues
+RabbitMQ
+Apache Kafka
+Amazon SQS
+
+Note: Ask yourself two questions:
+
+Does more than one system need this data? If yes → Kafka. RabbitMQ delivers to one consumer and deletes.
+Do I ever need to go back in time? If yes → Kafka. RabbitMQ has no replay.
+If both answers are no, RabbitMQ is simpler, lower-latency, and easier to operate.
+
+
+
+Database (SQL versus NoSQL)
+
+
+Vertical versus horizontal scaling (sharding, partitioning, replication)
+
+
+
+Deployment strategies (blue-green, canary, rolling updates)
+
+

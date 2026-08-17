@@ -1,0 +1,122 @@
+= Java Microservices Architecture
+:page-role: architecture
+:description: Microservices topology with event-driven patterns, service boundaries, data ownership, and end-to-end observability integration for Spring Boot services
+:keywords: Java, microservices, Kafka, event-driven architecture, service boundaries, domain-driven design, observability, Spring Boot
+
+[.lead]
+_Microservices aren't about making things smaller — they're about making ownership boundaries explicit so teams can ship independently._
+
+== Service Topology
+
+....
+┌─────────────────────────────────────────────────────────────┐
+│                     API Gateway (Kong)                        │
+│              rate limiting, auth, routing                     │
+└─────────────┬───────────────────────┬───────────────────────┘
+              │                       │
+     ┌────────▼────────┐    ┌────────▼────────┐
+     │  Order Service  │    │ Payment Service  │
+     │  (Spring Boot)  │    │  (Spring Boot)   │
+     │  owns: orders   │    │  owns: payments  │
+     └────────┬────────┘    └────────┬─────────┘
+              │                       │
+              │  ┌──────────────────┐ │
+              └──► Kafka (Events)  ◄──┘
+                 │  order.created   │
+                 │  payment.settled │
+                 └───────┬──────────┘
+                         │
+              ┌──────────▼──────────┐
+              │ Notification Service │
+              │  (consumer only)     │
+              └──────────┬──────────┘
+                         │
+              ┌──────────▼──────────┐
+              │  OTel Collector     │
+              │  traces → Jaeger    │
+              │  metrics → Prom     │
+              └─────────────────────┘
+....
+
+== Service Boundaries
+
+=== Decomposition Strategy
+
+Services are split by *business capability*, not technical layer. Each service:
+
+* Owns its database schema (no shared databases)
+* Exposes a versioned API contract (OpenAPI)
+* Publishes domain events to Kafka for downstream consumers
+* Has its own CI/CD pipeline and deployment cadence
+
+=== Anti-Pattern: The Distributed Monolith
+
+When service A synchronously calls B, which calls C, which calls D — you've built a distributed monolith with network latency as a bonus. Our rule: **if a call chain exceeds 2 hops, the boundary is wrong**.
+
+== Event-Driven Patterns
+
+=== Event Sourcing vs. Event Notification
+
+We use *event notification* (lightweight events that signal something happened), not full event sourcing. Events carry minimal payload + a reference ID:
+
+[source,json]
+----
+{
+  "type": "order.created",
+  "orderId": "ord-12345",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "source": "order-service"
+}
+----
+
+Consumers fetch full state via the source service's API if needed. This keeps events small and decouples schema evolution.
+
+=== Kafka Topic Design
+
+* **One topic per aggregate type**: `orders`, `payments`, `notifications`
+* **Partitioning by entity ID**: guarantees ordering within a single order
+* **Compacted topics** for state snapshots (consumer position, config)
+* **Retention**: 7 days for events, indefinite for compacted topics
+
+== Data Ownership
+
+|===
+| Service | Database | Owns | Exposes
+
+| Order Service | PostgreSQL | orders, line_items | REST + Kafka events
+| Payment Service | PostgreSQL | payments, refunds | REST + Kafka events
+| Inventory Service | PostgreSQL | stock_levels | REST (read-heavy, cached)
+| Notification Service | — (stateless) | — | consumes events only
+|===
+
+=== Cross-Service Queries
+
+No service queries another service's database directly. Options:
+
+1. **API composition** — BFF aggregates responses (low volume)
+2. **CQRS read model** — Kafka consumer materializes a denormalized view (high volume)
+3. **Saga pattern** — for distributed transactions (order + payment + inventory)
+
+== Observability Integration
+
+Every service exports:
+
+* **Traces**: OpenTelemetry SDK → OTel Collector → Jaeger (W3C trace context propagation)
+* **Metrics**: Micrometer → Prometheus (RED metrics: rate, errors, duration)
+* **Logs**: Structured JSON → Fluent Bit → OpenSearch (correlated by traceId)
+
+=== Trace Propagation
+
+W3C `traceparent` header propagates across HTTP calls. Kafka headers carry trace context for async flows. A single request touching 4 services produces one unified trace in Jaeger.
+
+== Resilience Patterns
+
+* **Circuit breaker** (Resilience4j): prevents cascade failures on downstream timeouts
+* **Bulkhead**: thread pool isolation per downstream dependency
+* **Retry with backoff**: idempotency keys prevent duplicate processing
+* **Timeout budget**: each service gets max 500ms; total request budget is 2s
+
+== Related
+
+* xref:case-studies:observability.adoc[Case Study: Observability Stack]
+* xref:software-engineering:microservices.adoc[Microservices Engineering]

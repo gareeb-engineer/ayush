@@ -1,0 +1,100 @@
+= DevSecOps
+:page-role: engineering
+:description: Shift-left security engineering — container scanning, secrets management, RBAC design, and runtime security patterns for Kubernetes production environments
+:keywords: DevSecOps, shift-left security, container scanning, Trivy, secrets management, RBAC, Kubernetes security, network policies, Falco, OPA
+
+[.lead]
+_Security is not a gate at the end of the pipeline. It is a property of the system — either built in from the start or bolted on too late._
+
+== Overview
+
+DevSecOps is not a separate team or an additional pipeline stage. It is the practice of embedding security decisions into the same workflow developers already use: code review, CI pipelines, infrastructure-as-code, and deployment automation.
+
+In Kubernetes environments, the attack surface is large: container images, pod security contexts, network traffic between services, secrets mounted as volumes, RBAC permissions. Each one needs a control — and each control needs to be automated, not manual.
+
+== Key Patterns
+
+=== Pattern 1: Security Gates in CI Pipelines
+
+Security scanning belongs in CI, not in a weekly report nobody reads.
+
+*Implementation layers*:
+
+|===
+| Stage | Tool Category | What It Catches
+
+| Pre-commit
+| Secret scanners (gitleaks, detect-secrets)
+| Hardcoded credentials before they enter Git
+
+| Build
+| SAST (SonarQube, Semgrep)
+| Code-level vulnerabilities, injection patterns
+
+| Post-build
+| Image scanning (Trivy, Grype)
+| CVEs in base images and dependencies
+
+| Pre-deploy
+| Policy checks (OPA/Conftest)
+| Misconfigured K8s manifests (privileged pods, missing resource limits)
+|===
+
+*Decision: Fail vs Warn*:
+- Critical/High CVEs in base image → fail the pipeline
+- Medium CVEs → warn, create tracking ticket
+- Low CVEs → log, review in weekly security triage
+
+*Trade-off*: Strict gates slow delivery. Calibrate severity thresholds per service criticality. Public-facing API gets strict gates; internal batch job gets warn-only.
+
+=== Pattern 2: Runtime Security with Network Policies and Falco
+
+CI catches known vulnerabilities. Runtime security catches unexpected behavior.
+
+*Network Policies (default-deny)*:
+- Start with deny-all ingress and egress per namespace
+- Explicitly allow only required communication paths
+- A compromised pod cannot reach other services or exfiltrate data if network policies are tight
+
+*Falco rules for anomaly detection*:
+- Alert on: shell spawned in container, unexpected network connections, sensitive file access (`/etc/shadow`, `/proc`)
+- These are behaviors that should never happen in a well-built container
+
+*Pod Security Standards*:
+- Enforce `restricted` profile for application workloads
+- `baseline` for system components that need limited privileges
+- Never `privileged` unless you can justify it in writing
+
+=== Pattern 3: Secrets Management — Never in Git, Never in Images
+
+*Hierarchy of secrets management* (from worst to best):
+
+1. Hardcoded in source code — catastrophic
+2. Environment variables in deployment manifests — visible in Git history forever
+3. Sealed Secrets — encrypted in Git, decrypted in-cluster (acceptable)
+4. External Secrets Operator → HashiCorp Vault — secrets never touch Git (preferred)
+5. Workload Identity + cloud-native secret stores — no static credentials at all (ideal)
+
+*Production pattern*: External Secrets Operator watches a `SecretStore` CR, fetches secrets from Vault/AWS Secrets Manager, and creates native Kubernetes Secrets. Pods mount them normally. Rotation is automatic.
+
+== Production Considerations
+
+*RBAC design*: Principle of least privilege is easy to state, hard to implement. Start with namespace-scoped roles (not ClusterRoles). Audit with `kubectl auth can-i --list` per service account. Use Aggregated ClusterRoles for common patterns.
+
+*Image provenance*: Sign images with Cosign/Sigstore. Admission controllers (Kyverno, OPA Gatekeeper) reject unsigned images. This prevents supply-chain attacks where a compromised registry serves malicious images.
+
+*Compliance as code*: Encode compliance requirements (CIS benchmarks, SOC2 controls) as OPA policies. They run in CI and as admission controllers — same policy, two enforcement points.
+
+== Troubleshooting
+
+*Pod rejected by admission controller*: Check Kyverno/Gatekeeper policy reports. Common causes: missing security context, privileged escalation, image not from allowed registry. Fix the manifest, not the policy.
+
+*Secret rotation breaking pods*: Pods that read secrets only at startup need a restart after rotation. Use Reloader or stakater/Reloader to watch Secret changes and trigger rolling restarts.
+
+*Network policy blocking legitimate traffic*: Label selectors in network policies are exact matches. A renamed label or new service breaks connectivity silently. Test network policies in staging with traffic generation.
+
+== Related
+
+* xref:case-studies:kubernetes-platform.adoc[Case Study: Air-Gapped Kubernetes Platform]
+* xref:platform-engineering:kubernetes.adoc[Kubernetes Operations]
+* xref:reliability:chaos-engineering.adoc[Chaos Engineering]

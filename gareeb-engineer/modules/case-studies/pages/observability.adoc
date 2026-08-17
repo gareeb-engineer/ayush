@@ -1,0 +1,282 @@
+= Building End-to-End Distributed Tracing for Java Services
+:page-role: case-study
+:description: Case study — implementing distributed tracing with OpenTelemetry and Jaeger v2 across Java services and JDBC calls
+:keywords: OpenTelemetry, Jaeger, distributed tracing, Java, Spring Boot, JDBC, Prometheus, Grafana, observability
+
+[.lead]
+_When a request disappeared between two services, we had no way to find it. This is how I built visibility into every hop._
+
+== Problem
+
+Our platform ran 12+ Spring Boot microservices handling order processing, inventory management, and payment flows. When something went wrong — a timeout, a failed transaction, a mysteriously slow checkout — the debugging process looked like this: grep logs on service A, correlate timestamps, guess which downstream service was involved, grep those logs too, repeat.
+
+There was zero visibility into the full request lifecycle. A single user action could touch 5 services and 8 database calls, but we had no way to see that chain. JDBC calls were a complete black box — we knew a service was slow, but couldn't tell if it was application logic, a missing index, or connection pool exhaustion.
+
+Incident resolution regularly took 2-4 hours because engineers had to manually reconstruct request flows from scattered logs. On-call rotations were brutal.
+
+== Constraints
+
+- *Existing services*: 12+ Spring Boot applications in production — rewriting was not an option
+- *Performance budget*: Strict <2% latency overhead limit; P99 latencies were already tight on payment paths
+- *Team readiness*: Most developers had never worked with distributed tracing; the solution needed to be invisible to app code
+- *Infrastructure*: Running on Kubernetes (EKS), services deployed via ArgoCD
+- *Budget*: No commercial APM tools (Datadog/New Relic budget wasn't approved); open-source only
+- *Storage*: Needed to retain traces for at least 7 days for post-incident analysis
+
+== Architecture
+
+....
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Kubernetes Cluster (EKS)                         │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌─────────────────────────────────────┐                                │
+│  │  Java Service Pod                   │                                │
+│  │  ┌───────────────────────────────┐  │                                │
+│  │  │  Spring Boot Application      │  │                                │
+│  │  │  + OTel Java Agent (-javaagent│) │                                │
+│  │  │  (auto-instruments HTTP,      │  │                                │
+│  │  │   gRPC, JDBC, Redis, Kafka)   │  │                                │
+│  │  └───────────────┬───────────────┘  │                                │
+│  │                  │ OTLP/gRPC        │                                │
+│  │                  ▼                   │                                │
+│  │  ┌───────────────────────────────┐  │                                │
+│  │  │  OTel Collector (sidecar)     │  │                                │
+│  │  │  - Batch processor            │  │                                │
+│  │  │  - Tail-based sampling        │  │                                │
+│  │  │  - Attribute filtering        │  │                                │
+│  │  └──────┬────────────┬───────────┘  │                                │
+│  │         │            │               │                                │
+│  └─────────┼────────────┼───────────────┘                                │
+│            │            │                                                 │
+│            ▼            ▼                                                 │
+│  ┌──────────────┐  ┌──────────────────┐                                  │
+│  │  Jaeger v2   │  │  Prometheus      │                                  │
+│  │  (Collector  │  │  (span metrics   │                                  │
+│  │   + Query)   │  │   via connector) │                                  │
+│  │      │       │  └────────┬─────────┘                                  │
+│  │      ▼       │           │                                            │
+│  │ Elasticsearch│           ▼                                            │
+│  │  (trace store│  ┌──────────────────┐                                  │
+│  │   7-day TTL) │  │  Grafana         │                                  │
+│  └──────────────┘  │  - Trace explorer│                                  │
+│                    │  - Service map    │                                  │
+│                    │  - Metrics→Traces │                                  │
+│                    └──────────────────┘                                  │
+│                                                                         │
+└────────────────────────────────────────────────────────────────────────┘
+....
+
+The key architectural decision was the *sidecar Collector pattern* — each pod gets its own OTel Collector instance. This decouples the application from the tracing backend and lets us change sampling, filtering, and routing without redeploying services.
+
+== Investigation
+
+I started by evaluating three tracing backends:
+
+|===
+| Option | Pros | Cons
+
+| Zipkin
+| Simple, well-known
+| Limited query capabilities, no tail sampling
+
+| Jaeger (v1)
+| Feature-rich, good UI
+| Agent deprecated, moving to OTel
+
+| Jaeger v2 + OTel
+| Native OTLP, modern architecture, active development
+| Newer (less community content at the time)
+|===
+
+*Decision*: Jaeger v2 with OpenTelemetry Collector as the pipeline. Jaeger v2 was built OTel-native, eliminating the translation layer that older versions needed.
+
+Next, I investigated instrumentation approaches:
+
+*Auto-instrumentation (OTel Java Agent)*: Attach a `-javaagent` JAR and get automatic spans for HTTP clients/servers, gRPC, JDBC, Redis, Kafka — zero code changes. I tested this on our order service and immediately saw HTTP spans appear in Jaeger.
+
+But there was a gap. When I traced a slow checkout request, the trace showed:
+
+....
+[HTTP POST /checkout] ──→ [HTTP GET /inventory] ──→ [???  380ms gap  ???]
+....
+
+The 380ms gap was database calls. The auto-instrumentation agent instruments JDBC by default... _but only if the JDBC driver is loaded through the application classloader_. Our services used a connection pool (HikariCP) that loaded drivers in a way the agent couldn't intercept without explicit configuration.
+
+== Root Cause
+
+The core challenge wasn't "how to add tracing" — auto-instrumentation solved 80% of that. The real problem was that *JDBC calls were invisible in traces*, and those were the operations that actually mattered for debugging slow requests.
+
+The OTel Java agent's JDBC instrumentation requires the `opentelemetry-javaagent-extension` for JDBC to properly wrap connection pools. Without it, spans for `java.sql.Statement.execute()` and `java.sql.PreparedStatement.execute()` were never created.
+
+Additionally, even when JDBC spans were generated, they contained the raw SQL query — which sometimes included user emails in WHERE clauses. We needed instrumentation that provided visibility *without* leaking PII into our trace storage.
+
+== Solution
+
+The fix involved four components working together:
+
+*1. OTel Java Agent with JDBC extension*
+
+Every service deployment was updated to include the agent JAR and configuration flags:
+
+[source,yaml]
+----
+# Kubernetes deployment snippet
+containers:
+  - name: order-service
+    image: registry.internal/order-service:1.4.2
+    env:
+      - name: JAVA_TOOL_OPTIONS
+        value: >-
+          -javaagent:/opt/otel/opentelemetry-javaagent.jar
+          -Dotel.service.name=order-service
+          -Dotel.exporter.otlp.endpoint=http://localhost:4317
+          -Dotel.instrumentation.jdbc.enabled=true
+          -Dotel.instrumentation.jdbc-datasource.enabled=true
+          -Dotel.instrumentation.hikaricp.enabled=true
+          -Dotel.resource.attributes=service.namespace=production,service.version=1.4.2
+    volumeMounts:
+      - name: otel-agent
+        mountPath: /opt/otel
+  initContainers:
+    - name: otel-agent-init
+      image: registry.internal/otel-java-agent:1.32.0
+      command: ['cp', '/agent/opentelemetry-javaagent.jar', '/opt/otel/']
+      volumeMounts:
+        - name: otel-agent
+          mountPath: /opt/otel
+----
+
+*2. Custom span processor for query sanitization*
+
+To handle PII in SQL queries, I added a sanitization processor:
+
+[source,java]
+----
+// Custom SpanProcessor to sanitize SQL query attributes
+public class JdbcSanitizingProcessor implements SpanProcessor {
+
+    private static final Pattern PII_PATTERN =
+        Pattern.compile("(email|phone|name)\\s*=\\s*'[^']*'",
+                        Pattern.CASE_INSENSITIVE);
+
+    @Override
+    public void onEnd(ReadWriteSpan span) {
+        String statement = span.getAttribute(SemanticAttributes.DB_STATEMENT);
+        if (statement != null) {
+            String sanitized = PII_PATTERN.matcher(statement)
+                .replaceAll("$1 = '***'");
+            span.setAttribute(SemanticAttributes.DB_STATEMENT, sanitized);
+        }
+    }
+}
+----
+
+*3. OTel Collector with tail-based sampling*
+
+The sidecar Collector configuration used tail-based sampling to keep interesting traces while dropping routine ones:
+
+[source,yaml]
+----
+# otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+    send_batch_size: 512
+    timeout: 5s
+  tail_sampling:
+    decision_wait: 10s
+    policies:
+      - name: error-traces
+        type: status_code
+        status_code: {status_codes: [ERROR]}
+      - name: slow-traces
+        type: latency
+        latency: {threshold_ms: 500}
+      - name: baseline-sample
+        type: probabilistic
+        probabilistic: {sampling_percentage: 10}
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger-collector.observability:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: otel
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, tail_sampling]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+----
+
+*4. Grafana dashboards linking metrics to traces*
+
+Built dashboards that let engineers click from a latency spike directly into the relevant trace. The Tempo/Jaeger data source in Grafana supports "Trace to logs" and "Trace to metrics" correlations — we configured exemplar links so any Prometheus metric could jump straight to a matching trace.
+
+== Trade-offs
+
+|===
+| Gained | Cost
+
+| Full request lifecycle visibility
+| ~5ms overhead per span creation (within our 2% budget)
+
+| JDBC-level debugging capability
+| Query text in spans requires PII sanitization pipeline
+
+| Tail-based sampling (keeps errors + slow traces)
+| 10s decision_wait means very short traces might be sampled before completion
+
+| Zero code changes for HTTP/gRPC tracing
+| Java agent version pinning adds maintenance overhead
+
+| Prometheus metrics from spans (span metrics connector)
+| Additional metric cardinality from high-cardinality span attributes
+|===
+
+Tail sampling specifically was a tradeoff we revisited twice. Keeping 100% of error traces and slow traces but only 10% of healthy traffic meant we occasionally couldn't reconstruct "what was normal" when comparing against an incident. We later bumped baseline sampling to 25% after expanding Elasticsearch storage.
+
+== Result
+
+After rolling out tracing across all 12 services over 3 weeks:
+
+- *Full request lifecycle visibility* from HTTP entry → inter-service calls → JDBC queries → cache hits
+- Incident detection time reduced from [YOUR_METRIC] min to [YOUR_METRIC] min
+- MTTR improved by [YOUR_METRIC]% — engineers could identify the failing service + query within minutes instead of hours
+- On-call escalations dropped significantly — L1 could resolve trace-visible issues without waking L2
+- Identified 3 previously unknown N+1 query patterns through trace flame graphs
+
+The Grafana dashboards became the team's primary investigation tool. The "Service Map" view alone eliminated most "which service do I look at?" questions.
+
+== Lessons Learned
+
+. *Auto-instrumentation is 80% of the value for 5% of the effort.* The OTel Java agent gave us HTTP, gRPC, Redis, and Kafka tracing with zero code changes. If you're starting from nothing, this alone is transformational.
+
+. *JDBC tracing is non-negotiable for backend services.* Most latency in typical Java services lives in database calls. Tracing that stops at the service boundary misses the most important signal.
+
+. *Sampling strategy must be decided early.* Retrofitting sampling after you've built dashboards and alerts around 100% trace data is painful. Start with tail-based sampling from day one.
+
+. *The real goal is metrics → traces → logs correlation.* Individual traces are useful. But the superpower is clicking a latency spike in Grafana and landing directly on the trace that caused it, then jumping to the relevant log lines. That's the observability trifecta.
+
+. *PII in spans is a real risk.* SQL queries, HTTP headers, message bodies — all can contain user data. Build sanitization into your pipeline from the start, not after your security team finds customer emails in Elasticsearch.
+
+. *Sidecar Collectors decouple app teams from platform decisions.* When we needed to switch from Elasticsearch to a different storage backend, zero application changes were needed — only the Collector config changed.
+
+== Related
+
+* xref:reliability:observability.adoc[Observability Engineering] — operational patterns for metrics, logs, and traces
+* xref:software-engineering:java.adoc[Java Engineering] — JVM patterns and production Java

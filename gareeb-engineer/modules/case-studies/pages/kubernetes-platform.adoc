@@ -1,0 +1,217 @@
+= Designing an Air-Gapped Kubernetes Platform
+:page-role: case-study
+:description: Case study — designing and deploying a production-grade air-gapped EKS cluster for compliance-restricted workloads
+:keywords: Kubernetes, EKS, air-gapped, private cluster, compliance, AWS, VPC, Helm, container registry
+
+[.lead]
+_Teams needed production Kubernetes, but compliance mandated zero internet egress from every workload — no exceptions._
+
+== Problem
+
+Our engineering teams were moving toward Kubernetes for service orchestration, but the compliance team had a hard requirement: workloads must not reach the public internet under any circumstances. This ruled out a standard EKS deployment where nodes pull images from public registries, Helm charts fetch from upstream repos, and cluster add-ons phone home for updates.
+
+The challenge was not just "make EKS work without internet" — it was building an entire platform ecosystem (container images, Helm charts, CRDs, operators, GitOps tooling) that could function entirely within a private network boundary, while still being maintainable by a small platform team.
+
+We could not afford to ship a platform that worked on day one and rotted on day thirty because nobody could update anything.
+
+== Constraints
+
+* **Regulatory compliance**: Zero internet egress from workload VPCs — auditable and enforceable via VPC flow logs
+* **No public subnets** for worker nodes — private subnets only, no NAT Gateway or Internet Gateway attached to workload route tables
+* **Container images**: Every image must originate from a private ECR registry — no DockerHub, no Quay, no GHCR at runtime
+* **AWS-only infrastructure**: EKS managed control plane with private API endpoint
+* **Helm charts**: All charts must be available offline — no `helm repo update` against upstream at deploy time
+* **Team size**: 3-person platform team responsible for the entire lifecycle
+* **Timeline**: Production-ready in 8 weeks, with compliance sign-off before first workload onboards
+
+== Architecture
+
+....
+┌──────────────────────────────────────────────────────────────────────┐
+│                         AWS Account                                    │
+│                                                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │                    VPC (10.0.0.0/16)                             │  │
+│  │                    No IGW / No NAT                               │  │
+│  │                                                                   │  │
+│  │  ┌──────────────────────────────────────────────────────────┐   │  │
+│  │  │         Private Subnets (workload)                        │   │  │
+│  │  │                                                            │   │  │
+│  │  │  ┌────────────────┐    ┌────────────────────────────┐    │   │  │
+│  │  │  │  EKS Worker    │    │  EKS Worker Nodes           │    │   │  │
+│  │  │  │  Node Group    │    │  (m5.xlarge, private IPs)   │    │   │  │
+│  │  │  │  (On-Demand)   │    │                              │    │   │  │
+│  │  │  └───────┬────────┘    └──────────────┬───────────────┘    │   │  │
+│  │  │          │                             │                    │   │  │
+│  │  └──────────┼─────────────────────────────┼────────────────────┘   │  │
+│  │             │                             │                        │  │
+│  │             ▼                             ▼                        │  │
+│  │  ┌──────────────────────────────────────────────────────────┐   │  │
+│  │  │              VPC Endpoints (PrivateLink)                   │   │  │
+│  │  │                                                            │   │  │
+│  │  │  • com.amazonaws.{region}.ecr.api                          │   │  │
+│  │  │  • com.amazonaws.{region}.ecr.dkr                          │   │  │
+│  │  │  • com.amazonaws.{region}.s3 (Gateway)                     │   │  │
+│  │  │  • com.amazonaws.{region}.sts                               │   │  │
+│  │  │  • com.amazonaws.{region}.ec2                               │   │  │
+│  │  │  • com.amazonaws.{region}.elasticloadbalancing              │   │  │
+│  │  │  • com.amazonaws.{region}.logs                              │   │  │
+│  │  │  • com.amazonaws.{region}.eks                               │   │  │
+│  │  └──────────────────────────────────────────────────────────┘   │  │
+│  │                                                                   │  │
+│  │  ┌─────────────────────┐     ┌────────────────────────────────┐ │  │
+│  │  │  EKS Control Plane  │     │  Private ECR Registry           │ │  │
+│  │  │  (AWS-managed,      │     │  (Image mirror from upstream)   │ │  │
+│  │  │   private endpoint) │     │                                  │ │  │
+│  │  └─────────────────────┘     └────────────────────────────────┘ │  │
+│  │                                                                   │  │
+│  │  ┌─────────────────────────────────────────────────────────────┐│  │
+│  │  │  Management Subnet (bastion / CI runner)                     ││  │
+│  │  │  • Image sync pipeline (pulls from internet → pushes to ECR) ││  │
+│  │  │  • Helm chart bundling pipeline                              ││  │
+│  │  │  • ArgoCD Git repo (CodeCommit via VPC endpoint)             ││  │
+│  │  └─────────────────────────────────────────────────────────────┘│  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+....
+
+The key insight: worker nodes never touch the internet. A separate management subnet (with controlled, audited internet access) handles the "supply chain" — syncing images and charts into the private ecosystem. Workloads only consume from internal sources.
+
+== Investigation
+
+I started the design by mapping every network call a standard EKS cluster makes and asking: "Can this work without internet?"
+
+**Phase 1: Control plane connectivity**
+
+EKS manages the control plane in AWS's VPC. For a fully private cluster, the API server endpoint must be private-only. This means `kubectl` access requires being inside the VPC or connected via VPN/Direct Connect. I validated that setting `endpointPublicAccess: false` and `endpointPrivateAccess: true` worked with our existing VPN setup.
+
+**Phase 2: VPC endpoint inventory**
+
+I audited every AWS API call the cluster makes during normal operation:
+- ECR pulls (ecr.api + ecr.dkr + s3 for layer storage)
+- STS for IAM Roles for Service Accounts (IRSA)
+- EC2 for ENI management (VPC CNI)
+- ELB for LoadBalancer services
+- CloudWatch Logs for control plane logging
+- EKS for node registration
+
+Each needed a corresponding VPC endpoint. I discovered the hard way that missing the S3 gateway endpoint breaks ECR pulls silently — the ECR API responds, but layer downloads hang because S3 is unreachable.
+
+**Phase 3: Image mirroring strategy**
+
+I evaluated three approaches:
+1. **Manual sync scripts** — simple but error-prone, no visibility into drift
+2. **Skopeo-based CI pipeline** — automated, syncs on schedule, tags preserved
+3. **ECR replication rules** — AWS-native but only works for ECR-to-ECR, not from external registries
+
+We chose option 2: a CI pipeline running in the management subnet that uses `skopeo sync` to mirror upstream images into our private ECR. The pipeline runs nightly and on-demand, with a manifest file declaring exactly which images and tags are approved.
+
+**Phase 4: Helm chart packaging**
+
+Standard Helm workflows assume `helm repo add` pulls an index from the internet. For air-gapped operation, we needed charts available locally. I built a process that:
+1. Pulls charts from upstream into a staging area
+2. Re-packages them with our custom values overlays
+3. Pushes them to an OCI-compatible registry (ECR supports Helm OCI charts)
+
+ArgoCD then references charts from ECR OCI URLs instead of internet Helm repos.
+
+== Root Cause
+
+The core challenge was not any single technical limitation — it was the *combinatorial complexity* of assembling all platform dependencies (container images, Helm charts, CRDs, operator configs, ArgoCD application manifests) into a self-contained package that functions without any internet path at runtime.
+
+Every Kubernetes add-on assumes internet access by default. Init containers pull from DockerHub. Helm charts hardcode upstream repos. Operators fetch CRDs from GitHub releases. Each assumption was a landmine in an air-gapped environment, and they only surface at deploy time — not at design time.
+
+== Solution
+
+The final platform architecture consisted of:
+
+**Private EKS Cluster**
+- Private-only API endpoint, no public access
+- Managed node groups in private subnets (no route to IGW/NAT)
+- VPC CNI with custom networking for pod IP management
+
+**VPC Endpoint Layer**
+- 8 VPC endpoints covering all AWS service calls
+- Security groups restricting endpoint access to cluster nodes only
+- S3 gateway endpoint (no hourly cost, critical for ECR layer pulls)
+
+**Image Supply Chain**
+[source,bash]
+----
+# Nightly sync pipeline (runs in management subnet)
+skopeo sync \
+  --src yaml --dest docker \
+  image-manifest.yaml \
+  ${AWS_ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/mirror
+----
+
+- Image manifest file declares approved images + versions
+- Pipeline runs in management subnet with controlled internet access
+- All nodes configured with ECR as sole registry (`--registry-mirror` not needed — we rewrite image refs in charts)
+
+**Offline Helm Charts**
+[source,bash]
+----
+# Push chart to ECR OCI registry
+helm push ingress-nginx-4.8.3.tgz oci://${AWS_ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com/charts
+----
+
+- All Helm charts stored in ECR as OCI artifacts
+- ArgoCD Application manifests reference OCI URLs
+- Version pinning enforced — no `latest` tags, ever
+
+**GitOps via ArgoCD**
+- ArgoCD deployed inside the cluster
+- Git repo hosted in CodeCommit (accessible via VPC endpoint)
+- App-of-apps pattern for cluster add-on lifecycle
+- Sync waves ensure CRDs deploy before operators
+
+== Trade-offs
+
+[cols="1,1"]
+|===
+| Gained | Sacrificed
+
+| Full compliance with zero-egress requirement
+| Operational overhead of maintaining image mirrors
+
+| Auditable supply chain (every image tracked in manifest)
+| 12-24 hour delay accessing upstream patches
+
+| Reduced attack surface (no outbound paths for exfiltration)
+| Additional VPC endpoint costs (~$800/month for 8 endpoints)
+
+| Reproducible deployments (all dependencies pinned and local)
+| Higher onboarding complexity for new services
+
+| Compliance team sign-off on day one
+| Platform team owns the mirror pipeline reliability
+|===
+
+The biggest ongoing cost is not financial — it is the cognitive overhead of remembering that every new tool, operator, or sidecar image needs to go through the mirror pipeline before it can run in production.
+
+== Result
+
+* Platform running [YOUR_METRIC] production services with zero internet egress — verified monthly via VPC flow log audits
+* Compliance team approved the architecture on first review — no remediation required
+* Mean time to onboard a new service: 2 days (including image mirror request and chart packaging)
+* Zero security findings related to network egress in 6 months of operation
+* Image sync pipeline maintains [YOUR_METRIC] mirrored images with 99.9% sync success rate
+* Platform adopted by 3 additional teams after initial compliance success
+
+== Lessons Learned
+
+**VPC endpoint planning is non-negotiable for private clusters.** Missing a single endpoint can cause subtle failures — ECR pulls that hang, IRSA tokens that never arrive, nodes that fail to register. Map every AWS API call your cluster makes before you start.
+
+**Container registry mirroring is a supply chain problem, not a Docker problem.** Treat your image manifest like a dependency lockfile. Version it in Git. Review changes. Know exactly what runs in your cluster and where it came from.
+
+**Offline Helm is solved by OCI registries.** The old approach of running a ChartMuseum or static file server is unnecessary now that ECR and other registries support Helm OCI. Push charts as OCI artifacts and reference them in ArgoCD — clean and native.
+
+**The trade-off between isolation and agility is real, but manageable.** You cannot move as fast as a team with unrestricted internet access. Accept this. Build automation around the supply chain pipeline so the overhead stays constant as the platform grows — do not let it scale linearly with service count.
+
+**Design for the mirror pipeline to be the single bottleneck you optimize.** If images flow smoothly from upstream → management subnet → ECR → worker nodes, everything else falls into place.
+
+== Related
+
+* xref:platform-engineering:kubernetes.adoc[Kubernetes Operations]
+* xref:architecture:kubernetes-architecture.adoc[K8s Platform Architecture]

@@ -1,0 +1,24 @@
+Insites of Trees
+
+Learn these in roughly this order:
+
+Recursive DFS
+Preorder / Inorder / Postorder
+BFS (level order)
+Bottom-up DFS
+BST property problems
+LCA
+Backtracking on trees
+Tree construction
+Prefix sum on trees
+Tree DP
+
+Those 10 patterns cover the overwhelming majority of tree questions on LeetCode. A good progression is to practice problems like:
+
+Maximum Depth of Binary Tree
+Binary Tree Level Order Traversal
+Diameter of Binary Tree
+Validate Binary Search Tree
+Lowest Common Ancestor of a Binary Tree
+Path Sum III
+Binary Tree Maximum Path Sum

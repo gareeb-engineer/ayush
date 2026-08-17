@@ -1,0 +1,132 @@
+= Architecture Decision Records
+:page-role: architecture
+:description: Key architectural decisions with context, rationale, trade-offs, and alternatives considered — demonstrating engineering judgment in production systems
+:keywords: ADR, architecture decisions, ArgoCD, GitOps, PostgreSQL Operator, RDS, Jenkins, Kubernetes
+
+[.lead]
+_Good architecture isn't about picking the "best" tool — it's about making defensible decisions with incomplete information and documenting WHY._
+
+== ADR-001: ArgoCD over Jenkins for Deployment
+
+=== Context
+
+Our CI/CD pipeline used Jenkins for both build and deployment. Jenkins jobs would `kubectl apply` manifests directly to clusters. This created problems:
+
+* Jenkins credentials had broad cluster access
+* Deploy failures were opaque — Jenkins logs ≠ cluster state
+* No drift detection — manual kubectl edits went unnoticed
+* Jenkins became a single point of failure for both build AND deploy
+
+=== Decision
+
+Separate CI (build/test) from CD (deployment). Use ArgoCD for all Kubernetes deployments via GitOps pull-based reconciliation. Jenkins retains CI responsibilities only.
+
+=== Alternatives Considered
+
+* **Jenkins + Helm deploy plugin**: Keeps everything in one tool, but still push-based with credential sprawl
+* **Flux CD**: Similar GitOps model, but less mature UI and weaker multi-tenancy at the time of evaluation
+* **Spinnaker**: Powerful but operationally heavy — requires its own infrastructure team
+
+=== Rationale
+
+* **Pull-based model**: Cluster pulls desired state from Git — no inbound credentials needed
+* **Drift detection**: ArgoCD continuously reconciles, surfacing manual changes immediately
+* **Declarative everything**: What's in Git IS the truth — no "works on my pipeline" debugging
+* **RBAC per Application**: Teams manage their own ArgoCD Applications without cluster-admin
+* **Visibility**: ArgoCD UI shows real-time sync status, health, and diff
+
+=== Consequences
+
+* *Positive*: Deploy failures are now visible in ArgoCD (not buried in Jenkins logs)
+* *Positive*: Credential surface area reduced — ArgoCD runs in-cluster, no external kubectl access
+* *Positive*: Rollbacks are `git revert` — no special rollback mechanism needed
+* *Negative*: Team needs to learn GitOps workflow (PR-to-deploy, no manual kubectl)
+* *Negative*: ArgoCD itself needs HA deployment and monitoring
+
+=== Status
+
+**Accepted** — in production since Q2 2023
+
+---
+
+== ADR-002: GitOps Pull-Based vs Push-Based Delivery
+
+=== Context
+
+Beyond the ArgoCD-vs-Jenkins tool choice, we needed to decide on a fundamental delivery philosophy. Push-based (CI triggers deploy) and pull-based (cluster reconciles from Git) have different operational models.
+
+=== Decision
+
+Adopt pull-based GitOps as the delivery model for all Kubernetes workloads. The cluster is the actor — it continuously reconciles toward the desired state defined in Git.
+
+=== Alternatives Considered
+
+* **Push-based with guardrails**: CI pipeline deploys, but adds drift detection as a separate check — complexity without cohesion
+* **Hybrid**: Push for dev, pull for prod — two mental models, double the debugging surface
+* **Event-driven push**: Webhook triggers deploy only on Git change — still push semantics with network dependency
+
+=== Rationale
+
+* **Self-healing**: If someone deletes a resource manually, the reconciler recreates it. Push-based won't notice until next deploy.
+* **Audit trail**: Git history IS the deploy history. Every production state has a commit hash.
+* **Reduced blast radius**: Bad merges are caught by sync status, not by customers reporting issues.
+* **Air-gap friendly**: Pull-based works in disconnected environments — the cluster only needs read access to a Git repo.
+
+=== Consequences
+
+* *Positive*: Consistent environments — staging and production differ only by Git branch/values
+* *Positive*: Disaster recovery is `argocd app sync --prune` against the repo
+* *Negative*: Developers must adopt "change Git, not the cluster" discipline
+* *Negative*: Secrets management requires external tooling (External Secrets Operator) since secrets can't live in Git plaintext
+
+=== Status
+
+**Accepted** — foundational principle across all environments
+
+---
+
+== ADR-003: PostgreSQL Operator vs Managed RDS
+
+=== Context
+
+Our services needed PostgreSQL with HA, automated failover, and backup. Two viable options:
+
+1. Run PostgreSQL on Kubernetes using Zalando's PostgreSQL Operator (Patroni + Spilo)
+2. Use AWS RDS for PostgreSQL (managed service)
+
+=== Decision
+
+Run PostgreSQL on Kubernetes with the Zalando PostgreSQL Operator for non-trivial databases. Use RDS only for legacy workloads that can't migrate to the Kubernetes-native stack.
+
+=== Alternatives Considered
+
+* **AWS RDS**: Fully managed, automated backups, Multi-AZ — but locked into AWS, no customization of PostgreSQL extensions or versions
+* **AWS Aurora PostgreSQL**: Higher performance but 3-5x cost and compatibility gaps with certain extensions
+* **CrunchyData PGO**: Another K8s operator — less community adoption than Zalando at evaluation time
+
+=== Rationale
+
+* **Portability**: Same PostgreSQL stack runs in any Kubernetes cluster (air-gapped, on-prem, multi-cloud)
+* **Extension control**: We need `pg_stat_statements`, `pg_cron`, custom extensions — RDS restricts these
+* **Cost**: Operator on existing nodes vs. dedicated RDS instances (at our scale: 40% cheaper)
+* **Consistency**: Everything is a Kubernetes resource — same monitoring, same backup pipeline (WAL-G → S3), same GitOps deploy
+* **Fine-grained HA**: Patroni gives us control over failover behavior, replication lag thresholds, and maintenance windows
+
+=== Consequences
+
+* *Positive*: PostgreSQL versioning controlled by us — upgrade when ready, not when AWS pushes
+* *Positive*: Same operational patterns as all other workloads (ArgoCD sync, Prometheus alerts)
+* *Positive*: Backup/restore tested with same tooling (WAL-G) across all environments
+* *Negative*: We own the operational burden — patching, upgrades, storage management
+* *Negative*: CRD upgrades can be complex (see xref:case-studies:postgres-operator-upgrade.adoc[PostgreSQL Operator Upgrade case study])
+* *Negative*: Requires deep Kubernetes storage knowledge (PVC lifecycle, volume snapshots)
+
+=== Status
+
+**Accepted** — running 12 PostgreSQL clusters via operator in production
+
+== Related
+
+* xref:case-studies:postgres-operator-upgrade.adoc[Case Study: PostgreSQL Operator Upgrade]
+* xref:case-studies:gitops-platform.adoc[Case Study: GitOps Delivery Platform]
+* xref:case-studies:kubernetes-platform.adoc[Case Study: Air-Gapped Kubernetes Platform]

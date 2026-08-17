@@ -1,0 +1,40 @@
+= About Me
+:page-role: about
+:description: Ayush Nigam — Software & Platform Engineer. Background, engineering philosophy, and working style.
+:keywords: about, software engineer, platform engineer, devops, java, kubernetes
+
+[.lead]
+I build software and the platforms that run it — from application code through infrastructure to production operations.
+
+== How I Got Here
+
+I started as a Java developer writing Spring Boot services.
+Somewhere along the way, I kept asking the same question: _"Where does my code actually run, and why does it break there?"_
+
+That curiosity pulled me deeper — into containers, then Kubernetes, then the full platform stack.
+Over five years I went from writing backend APIs to designing air-gapped deployment pipelines, wiring distributed tracing with OpenTelemetry and Jaeger, and building observability dashboards that on-call teams could actually trust.
+
+The path was never planned.
+I followed the problems — and the problems kept leading to the boundary between application code and infrastructure.
+
+== What Drives Me
+
+I gravitate toward the messy space where software meets the system it runs on.
+
+Deployment that needs to work in disconnected environments. A tracing span that disappears between two services. A Prometheus alert that fires at 3 a.m. because a pod hit its memory limit. These are the problems I find interesting — they require understanding both the application logic _and_ the platform beneath it.
+
+If a problem lives entirely in business logic or entirely in infrastructure, someone else can probably solve it faster. But when it spans both — that's where I do my best work.
+
+== How I Work
+
+*Ownership.* I don't hand off a service at the deployment boundary. If I build it, I want to be on the page when it breaks. That mindset shapes how I write code — with observability baked in, graceful degradation by default, and clear runbooks for the next person.
+
+*Collaboration.* Good platform work is invisible to the teams that use it. I spend time understanding what application developers actually need before building tooling or automation. The best Helm chart is the one nobody has to think about.
+
+*Incident mindset.* Production issues don't wait for perfect information. I troubleshoot with what's available — logs, metrics, traces, `kubectl describe` — narrow the blast radius first, root-cause later. Every incident becomes a prevention story.
+
+== Beyond the Terminal
+
+When I'm not staring at YAML or JVM heap dumps, you'll find me exploring budget travel hacks (the "Gareeb Engineer" moniker is earned, not just a brand), reading about distributed systems architecture, or convincing friends that terminal UIs are a valid hobby.
+
+I believe engineering should be accessible — to teams, to budgets, and to the next person who reads your code at 2 a.m.

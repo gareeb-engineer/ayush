@@ -1,0 +1,127 @@
+= Kubernetes Troubleshooting Journal
+:page-role: engineering
+:description: Systematic Kubernetes troubleshooting methodology — OOMKilled, CrashLoopBackOff, PVC Pending, ImagePullBackOff, Node NotReady, and DNS resolution failures with root causes and fixes
+:keywords: Kubernetes, Troubleshooting, OOMKilled, CrashLoopBackOff, PVC Pending, ImagePullBackOff, DNS, Node NotReady, Debugging
+
+[.lead]
+_Every production incident follows a pattern. This journal documents the ones I've seen, how I investigated them, and how to prevent them from recurring._
+
+== Overview
+
+Kubernetes failure modes are deceptive. A pod in `CrashLoopBackOff` might be an application bug, a missing ConfigMap, a resource limit, or a node-level issue. The symptom is identical; the root cause varies wildly.
+
+This page documents real troubleshooting patterns from production EKS clusters — not "run `kubectl describe pod`" tutorials, but systematic investigation workflows that trace symptoms to root causes. Each entry follows the same structure: What Happened, Investigation, Evidence, Root Cause, Fix, Prevention.
+
+== Key Patterns
+
+=== Pattern 1: The Investigation Funnel
+
+Every Kubernetes issue follows a diagnostic funnel — start wide, narrow systematically:
+
+1. *Cluster level*: `kubectl get nodes` — are all nodes Ready? Any resource pressure (MemoryPressure, DiskPressure)?
+2. *Namespace level*: `kubectl get pods -n <ns>` — which pods are unhealthy? When did it start?
+3. *Pod level*: `kubectl describe pod` — what do Events say? Last state? Exit code?
+4. *Container level*: `kubectl logs --previous` — what was the last output before crash?
+5. *Node level*: `kubectl describe node` — resource allocation, taints, conditions?
+
+The mistake most engineers make: jumping straight to container logs without checking if the problem is at the node or scheduler level.
+
+=== Pattern 2: Exit Code Interpretation
+
+Container exit codes are your first triage signal:
+
+* *Exit 0*: Clean shutdown — usually a liveness probe failure or preStop hook issue
+* *Exit 1*: Application error — check logs for stack trace
+* *Exit 137*: SIGKILL — OOMKilled (check `kubectl describe pod` for OOMKilled reason) or pod eviction
+* *Exit 143*: SIGTERM — graceful termination (pod deleted, node drain, or deployment rollout)
+* *Exit 255*: Unknown error — often missing entrypoint binary or corrupted container image
+
+Exit 137 with OOMKilled is the most common — and the most commonly misdiagnosed. The container might not be leaking memory; the *limit* might just be too low for the workload's steady-state.
+
+== Failure Patterns
+
+=== OOMKilled
+
+*What Happened*: Pod repeatedly killed with exit code 137, reason OOMKilled.
+
+*Investigation*: Compared `resources.limits.memory` against actual JVM heap + metaspace + native memory. Java services are notorious — the JVM uses ~30% more memory than `-Xmx` due to metaspace, thread stacks, GC overhead, and NIO buffers.
+
+*Root Cause*: Memory limit set to 512Mi, JVM `-Xmx` set to 512m. No room for non-heap memory.
+
+*Fix*: Set limit to 1.5x the `-Xmx` value. For 512m heap, set limit to 768Mi minimum. Add `-XX:MaxMetaspaceSize` and `-XX:+UseContainerSupport`.
+
+*Prevention*: Always calculate Java container memory as: `Xmx + MaxMetaspace + ThreadStacks(count * Xss) + 100Mi buffer`.
+
+=== CrashLoopBackOff
+
+*What Happened*: New deployment stuck in CrashLoopBackOff, exponential backoff increasing restart delay.
+
+*Investigation*: `kubectl logs --previous` showed the app trying to connect to a database on startup. The database wasn't available yet (dependency ordering issue).
+
+*Root Cause*: Application fails fast on startup if database is unreachable. Kubernetes restarts it, but with exponential backoff, recovery takes 5+ minutes even after the database comes up.
+
+*Fix*: Added retry logic in application startup (Spring Boot `spring.datasource.hikari.initializationFailTimeout=-1`). Added readiness probe to delay traffic until DB connection established.
+
+*Prevention*: Design applications to tolerate dependency unavailability at startup. Use init containers for hard dependencies.
+
+=== PVC Pending
+
+*What Happened*: StatefulSet pods stuck in Pending, events showing "waiting for a volume to be created."
+
+*Investigation*: `kubectl describe pvc` showed the PVC was unbound. Checked StorageClass — it existed. Checked EBS CSI driver pods — they were running. Checked the AWS region/AZ.
+
+*Root Cause*: PVC requested storage in `us-east-1a`, but all available nodes were in `us-east-1b`. EBS volumes are AZ-bound — they can't attach cross-AZ.
+
+*Fix*: Added `topologySpreadConstraints` to ensure pods schedule in the same AZ as their PVCs. For new clusters, use `volumeBindingMode: WaitForFirstConsumer` in StorageClass.
+
+*Prevention*: Always set `WaitForFirstConsumer` — it delays PV creation until the pod is scheduled, ensuring AZ alignment.
+
+=== ImagePullBackOff
+
+*What Happened*: Pods failing with ImagePullBackOff after ECR image push.
+
+*Investigation*: `kubectl describe pod` showed "unauthorized: authentication required." Checked ECR token — it was expired (12-hour TTL).
+
+*Root Cause*: ECR tokens expire every 12 hours. In air-gapped clusters without automatic token refresh, the kubelet's cached credential becomes stale.
+
+*Fix*: Deployed ECR credential helper as a CronJob that refreshes the pull secret every 6 hours. Alternatively, use IRSA (IAM Roles for Service Accounts) for ECR authentication.
+
+*Prevention*: Never rely on static pull secrets for ECR. Automate credential rotation.
+
+=== Node NotReady
+
+*What Happened*: Two nodes flipped to NotReady simultaneously, causing pod evictions across the cluster.
+
+*Investigation*: `kubectl describe node` showed `KubeletNotReady` condition. Checked kubelet logs on the node — kubelet was running but couldn't reach the API server.
+
+*Root Cause*: A security group rule change removed the API server's inbound HTTPS port from the node security group. Kubelet couldn't heartbeat to the control plane.
+
+*Fix*: Restored the security group rule. Nodes returned to Ready within 40 seconds (default node-monitor-grace-period).
+
+*Prevention*: Infrastructure changes (Terraform/CloudFormation) affecting security groups must be tested in staging first. Add a canary that monitors kubelet-to-API-server connectivity.
+
+=== DNS Resolution Failures
+
+*What Happened*: Intermittent `UnknownHostException` in Java services, causing request failures to downstream services.
+
+*Investigation*: `nslookup` from a debug pod showed inconsistent responses. CoreDNS pods were running but one replica was OOMKilled frequently. ndots:5 setting in `resolv.conf` caused excessive DNS queries for every lookup.
+
+*Root Cause*: CoreDNS memory limit too low for cluster size (500+ services). Each service discovery query generated 5 DNS lookups (due to `ndots:5` search path). CoreDNS couldn't keep up.
+
+*Fix*: Increased CoreDNS memory limit to 256Mi, scaled to 3 replicas with HPA, and added `dnsConfig.options: ndots:2` to high-traffic pods.
+
+*Prevention*: Monitor CoreDNS with `coredns_dns_responses_total` and `coredns_panics_total`. Scale CoreDNS proportionally to cluster service count.
+
+== Production Considerations
+
+* Keep a debug pod spec ready: `kubectl run debug --image=busybox --rm -it -- sh` is too slow during incidents. Pre-deploy a `netshoot` pod in each namespace.
+* `kubectl get events --sort-by=.metadata.creationTimestamp` is the single most useful command for correlating failures across resources.
+* Node-level issues often masquerade as pod-level issues. Always check node conditions first.
+* In managed Kubernetes (EKS), control plane issues are invisible to `kubectl`. Check AWS CloudWatch for API server latency and etcd health.
+
+== Related
+
+* xref:case-studies:postgres-operator-upgrade.adoc[Case Study: PostgreSQL Operator Upgrade — Multi-Layer Investigation]
+* xref:case-studies:kubernetes-platform.adoc[Case Study: Air-Gapped Kubernetes Platform]
+* xref:disaster-recovery.adoc[Disaster Recovery — When Troubleshooting Becomes Recovery]
+* xref:observability.adoc[Observability — Detecting Issues Before Users Report Them]

@@ -1,0 +1,60 @@
+= Spring Boot in Production
+:page-role: engineering
+:description: Production Spring Boot patterns — service architecture, layered configuration, security, actuator endpoints, and graceful shutdown strategies
+:keywords: Spring Boot, Spring Security, JWT, OAuth2, Actuator, configuration management, graceful shutdown, health checks, profiles
+
+[.lead]
+_Spring Boot makes starting easy. Keeping it healthy in production — with proper config layering, security, and observability — is where the craft lives._
+
+== Overview
+
+Spring Boot powers most of the Java microservices I've built and operated. This page isn't about `@SpringBootApplication` magic — it's about the patterns that prevent 3 AM pages: proper configuration hierarchy, security that doesn't leak tokens, health checks that actually mean something, and shutdown sequences that don't drop in-flight requests.
+
+== Key Patterns
+
+=== Pattern 1: Layered Configuration Management
+
+Configuration in production spans multiple layers. Getting the precedence right prevents the "works on my machine" class of incidents:
+
+* **Layer Stack** (lowest to highest precedence): `application.yml` → `application-\{profile\}.yml` → environment variables → Kubernetes ConfigMaps/Secrets mounted as files → command-line args.
+* **Profile Strategy**: Use `dev`, `staging`, `prod` profiles. Never put secrets in profile YAML — use external secret stores (Vault, AWS Secrets Manager) injected as env vars.
+* **Config Server vs. ConfigMaps**: For Kubernetes deployments, ConfigMaps with volume mounts + Spring Cloud Kubernetes is simpler than running a separate Config Server. Reload on change with `spring.cloud.kubernetes.reload.enabled=true`.
+* **Validation**: Annotate `@ConfigurationProperties` classes with `@Validated` and JSR-303 constraints. Fail fast on startup if required config is missing.
+
+=== Pattern 2: Health Check Design for Kubernetes
+
+Default `/actuator/health` is useless for Kubernetes probes without customization:
+
+* **Liveness**: Should only fail if the application is in an irrecoverable state. Never include downstream dependency checks here — a slow database shouldn't trigger a pod restart loop.
+* **Readiness**: Include essential dependencies (database pool active, cache connected). Failing readiness removes the pod from service discovery without killing it.
+* **Startup Probe**: Critical for large Spring Boot apps. Set `initialDelaySeconds` based on actual cold-start time. Without this, liveness probes kill pods that haven't finished initializing.
+* **Custom Indicators**: Write `HealthIndicator` beans for business-critical checks (message queue consumer lag, circuit breaker state).
+
+=== Pattern 3: Graceful Shutdown Under Load
+
+Kubernetes sends SIGTERM → waits `terminationGracePeriodSeconds` → SIGKILL. Spring Boot needs to cooperate:
+
+* **Enable**: `server.shutdown=graceful` + `spring.lifecycle.timeout-per-shutdown-phase=30s`.
+* **Pre-stop Hook**: Add a pre-stop hook with `sleep 5` to allow kube-proxy to update iptables before the app stops accepting connections.
+* **In-flight Requests**: Embedded Tomcat drains active requests. Long-running requests need the timeout configured longer than typical response time.
+* **Message Consumers**: Kafka/RabbitMQ listeners need explicit shutdown hooks to commit offsets and stop polling before the container dies.
+
+== Production Considerations
+
+* **Startup Optimization**: Lazy initialization (`spring.main.lazy-initialization=true`) for non-critical beans. Use `@Lazy` selectively — blanket lazy init delays error detection.
+* **Security Hardening**: Disable unused actuator endpoints. Expose only `/health`, `/info`, `/prometheus` externally. Put `/env`, `/heapdump`, `/threaddump` behind management port with separate authentication.
+* **JWT Validation**: Validate tokens at the gateway AND service level. Use `spring-security-oauth2-resource-server` with JWKS endpoint caching. Set `jwk-set-cache-lifespan` to avoid hammering the auth server.
+* **Request Tracing**: Auto-instrumentation with Micrometer Tracing (formerly Sleuth) propagates trace context through `RestTemplate`, `WebClient`, and Kafka headers automatically.
+* **Connection Pool Tuning**: HikariCP defaults are conservative. Set `maximumPoolSize` based on `connections = cores * 2 + effective_spindle_count`. Monitor `hikaricp.connections.pending` — growth means pool exhaustion.
+
+== Troubleshooting
+
+* **Slow Startup (>30s)**: Enable `spring.main.log-startup-info=true` and check `ApplicationStartedEvent` timing. Component scanning large classpaths and eager Hibernate schema validation are common culprits.
+* **Memory Creep**: Spring's application context caches beans forever. Watch for request-scoped beans accidentally created as singletons, and `@Cacheable` without TTL configured.
+* **Random 503s on Deploy**: Missing pre-stop hook. Pod removed from endpoints before it stops accepting traffic, causing connection resets during rolling updates.
+
+== Related
+
+* xref:case-studies:observability.adoc[Case Study: Distributed Tracing Implementation]
+* xref:software-engineering:java.adoc[Production Java Engineering]
+* xref:software-engineering:microservices.adoc[Microservices Design Patterns]

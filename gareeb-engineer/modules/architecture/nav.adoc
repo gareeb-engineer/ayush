@@ -1,0 +1,5 @@
+.Architecture & Design
+* xref:kubernetes-architecture.adoc[Kubernetes Platform Architecture]
+* xref:java-architecture.adoc[Java Microservices Architecture]
+* xref:aws-architecture.adoc[AWS Infrastructure Architecture]
+* xref:decisions.adoc[Architecture Decision Records]

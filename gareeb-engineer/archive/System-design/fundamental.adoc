@@ -1,0 +1,10 @@
+Cap Theorem
+
+Sharding
+
+Consisting hashing
+
+API Design
+
+Data Modeling (watch Sanchit sir video, on 1NF, 2NF, 3NF)
+

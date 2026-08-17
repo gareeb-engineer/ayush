@@ -1,0 +1,2 @@
+Java provides in build support for the multithreading using build in api
+Thread, Runnable, ThreadGroup

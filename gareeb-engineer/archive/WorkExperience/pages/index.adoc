@@ -1,0 +1,7 @@
+= Work Experience
+
+A collection of learnings and documentation from real-world work experience.
+
+== Distributed Tracing
+
+* xref:Tracing/index.adoc[Distributed Tracing]

@@ -1,0 +1,312 @@
+= Distributed Tracing — Part 2a: OpenTelemetry & Jaeger V2
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+:source-highlighter: highlight.js
+
+[.lead]
+Part 2 of the learning series covers the **tools and protocols** used in the Foundation tracing stack.
+This file (2a) focuses on the OpenTelemetry ecosystem and Jaeger V2.
+
+== OpenTelemetry (OTel)
+
+=== What Is OpenTelemetry?
+
+OpenTelemetry is a **vendor-neutral, open-source observability framework** maintained by the CNCF.
+It provides APIs, SDKs, and tooling to generate, collect, and export telemetry data — traces, metrics, and logs.
+
+Think of it as the **universal adapter** for observability: your application emits telemetry through OTel APIs, and OTel ships it to whichever backend you choose (Jaeger, Zipkin, Datadog, Grafana Tempo, etc.) without changing application code.
+
+[cols="1,3",options="header"]
+|===
+| Component | Role
+
+| **OTel API**
+| Language-specific interfaces your code calls (`Tracer.startSpan()`, `Span.end()`). Zero-dependency — safe to compile against even if no SDK is present.
+
+| **OTel SDK**
+| The actual implementation behind the API. Manages span lifecycle, sampling decisions, batching, and export. You configure it once at application startup.
+
+| **OTel Collector**
+| A standalone binary that receives, processes, and exports telemetry. Deployed as a sidecar, DaemonSet, or Deployment. Jaeger V2 _is_ an OTel Collector with Jaeger-specific extensions.
+
+| **OTel Exporters**
+| Pluggable modules that send spans to a backend. Common exporters: `otlp` (OTLP HTTP/gRPC), `zipkin`, `jaeger` (legacy Thrift — deprecated), `logging` (stdout).
+
+| **OTel Operator**
+| A Kubernetes operator that manages `OpenTelemetryCollector` custom resources — creates Deployments, Services, HPA, and wires up ports automatically.
+|===
+
+=== Auto-Instrumentation vs Manual Instrumentation
+
+[cols="1,2,2",options="header"]
+|===
+| Approach | How It Works | When to Use
+
+| **Auto-instrumentation (Java Agent)**
+| Attach `-javaagent:opentelemetry-javaagent.jar` at JVM startup. The agent bytecode-instruments known libraries (Spring MVC, JDBC, gRPC, HTTP clients) at class-load time. Zero code changes.
+| Quickest path for existing apps. Covers most common libraries out of the box.
+
+| **Programmatic / Manual**
+| Import OTel SDK, create a `Tracer`, call `tracer.spanBuilder("name").startSpan()` and `span.end()` in your code.
+| When you need custom spans around business logic that auto-instrumentation doesn't cover.
+
+| **Micrometer Bridge (Foundation's approach)**
+| Spring Boot 3 uses **Micrometer Observation API** as its native instrumentation layer. The `micrometer-tracing-bridge-otel` library translates Micrometer Observations into OTel spans. No Java agent needed.
+| Spring Boot 3 projects that already use the Micrometer Observation API (which Spring MVC, WebFlux, and Spring Data do by default).
+|===
+
+[NOTE]
+====
+Foundation does **not** use the OTel Java Agent. It uses the **Micrometer Bridge** approach because:
+
+* Spring Boot 3 already instruments HTTP, WebFlux, and JDBC via the Observation API.
+* The bridge converts those Observations to OTel spans with zero bytecode manipulation.
+* The `foundation-spring-boot-bom` manages the bridge and exporter versions centrally.
+====
+
+=== How Spring Boot 3 Auto-Configures Tracing
+
+Spring Boot 3's auto-configuration activates tracing when these conditions are met:
+
+[source,text]
+----
+1. micrometer-tracing-bridge-otel is on the classpath     ← provided by BOM
+2. opentelemetry-exporter-otlp is on the classpath        ← provided by BOM
+3. management.tracing.enabled=true                        ← set by Helm values
+4. management.tracing.sampling.probability > 0            ← set by Helm values
+----
+
+The `foundationhelmlib.jaegerv2` Helm helper template renders these properties into each service's ConfigMap:
+
+[source,yaml]
+----
+# Rendered by foundationhelmlib.jaegerv2 when global.jaeger.enabled=true
+management:
+  tracing:
+    enabled: true
+    sampling:
+      probability: "0.1"          # from global.jaeger.samplingProbability
+    propagation:
+      type: w3c                   # W3C Trace Context (traceparent header)
+  otlp:
+    tracing:
+      endpoint: "http://jaegerv2-collector.foundation-cluster-monitoring.svc.cluster.local:4318/v1/traces"
+----
+
+[IMPORTANT]
+====
+The endpoint path **must** include `/v1/traces`. Spring Boot's OTLP exporter does NOT append it automatically — unlike some other OTel SDKs that do.
+====
+
+
+== Jaeger V2
+
+=== Why "V2"?
+
+Jaeger V1 (the original `jaeger-operator` + `jaeger-agent` + `jaeger-collector` + `jaeger-query` stack) reached **end-of-life on 31 December 2025**. The `jaeger-agent` sidecar was deprecated even earlier.
+
+Jaeger V2 is a complete rewrite that **runs inside the OpenTelemetry Collector**. Instead of a standalone Jaeger binary, V2 is an OTel Collector distribution with Jaeger-specific extensions for storage and the Query UI.
+
+[cols="1,2,2",options="header"]
+|===
+| Aspect | Jaeger V1 | Jaeger V2
+
+| **Operator**
+| `jaeger-operator`
+| `opentelemetry-operator`
+
+| **Receives spans via**
+| Thrift (UDP 6831), gRPC (14250), Zipkin
+| OTLP gRPC (4317), OTLP HTTP (4318), Zipkin
+
+| **Agent sidecar**
+| `jaeger-agent` per pod (deprecated)
+| None — apps push directly to collector
+
+| **Configuration**
+| Jaeger-specific YAML / env vars
+| Standard OTel Collector pipeline YAML (`receivers` → `processors` → `exporters`)
+
+| **Image**
+| `jaegertracing/jaeger-collector`, `jaeger-query`, `jaeger-agent`
+| Single image: `jaeger-collector:2.17.0` (used for both collector and storage pods)
+
+| **Query UI**
+| Separate `jaeger-query` Deployment
+| Built into the storage pod as an OTel extension
+|===
+
+=== Architecture in Foundation
+
+Jaeger V2 is deployed as **two `OpenTelemetryCollector` custom resources** in the `foundation-cluster-monitoring` namespace, managed by the OpenTelemetry Operator:
+
+[source,text]
+----
+                         ┌─────────────────────────────┐
+                         │   opentelemetry-operator     │
+                         │  (foundation-operators-ext)  │
+                         └──────────┬──────────────────┘
+                                    │ manages
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+        ┌───────────────────┐           ┌───────────────────────┐
+        │    jaegerv2        │           │   jaegerv2-storage     │
+        │   (Collector)      │           │  (Storage + Query UI)  │
+        │                    │           │                        │
+        │  Ports:            │   gRPC    │  Ports:                │
+        │  4317 (gRPC in)    │ ────────► │  4317 (gRPC in)        │
+        │  4318 (HTTP in)    │           │  16686 (HTTP Query UI) │
+        │  Zipkin            │           │  16685 (gRPC Query)    │
+        │                    │           │                        │
+        │  HPA: 1–2 replicas │           │  Extensions:           │
+        └───────────────────┘           │  jaeger_query          │
+                                         │  jaeger_storage        │
+                                         │  healthcheckv2         │
+                                         └───────────────────────┘
+----
+
+=== Collector Pipeline Configuration
+
+The collector pod uses a standard OTel Collector pipeline:
+
+[source,yaml]
+----
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  zipkin: {}                              # legacy Zipkin format support
+
+processors:
+  batch:
+    send_batch_size: 10000
+    timeout: 10s
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: memstore               # or "esstore" for Elasticsearch
+  otlp/storage:
+    endpoint: jaegerv2-storage-collector:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp, zipkin]
+      processors: [batch]
+      exporters: [otlp/storage]           # forwards all spans to storage pod
+----
+
+[NOTE]
+====
+The collector itself does **not** store spans. It batches them and forwards via gRPC to the `jaegerv2-storage` pod which persists them.
+====
+
+=== Storage Backends
+
+[cols="1,2,2",options="header"]
+|===
+| Backend | Config | Notes
+
+| **Memory** (default)
+| `storage.type: memory`, `maxTraces: 100000`
+| Non-persistent — traces lost on pod restart. HPA locked to 1 replica. Good for dev/test.
+
+| **Elasticsearch**
+| `storage.type: elasticsearch`, connects to Foundation's ECK cluster
+| Persistent. Index prefix `jgrv2` (avoids clash with V1's `jaeger-*`). Daily rollover. CronJob cleans indices older than 30 days. HPA: 1–2 replicas.
+|===
+
+=== Ports Quick Reference
+
+[cols="1,1,2",options="header"]
+|===
+| Port | Protocol | Used By
+
+| `4317`
+| OTLP gRPC
+| Zitadel, Jaeger internal (collector → storage forwarding)
+
+| `4318`
+| OTLP HTTP
+| Spring Boot services, APISIX data plane
+
+| `16686`
+| HTTP
+| Jaeger Query UI (browser), Kiali (trace correlation)
+
+| `16685`
+| gRPC
+| Jaeger Query gRPC API (programmatic access)
+|===
+
+=== Accessing the Jaeger UI
+
+==== Via Cluster Ingress (Normal Path)
+
+[source,text]
+----
+https://admin.<clusterExternalDns>/monitoring/jaegerv2
+----
+
+Requires:
+
+1. Valid JWT session (Zitadel login)
+2. `sws_permissions` claim containing `monitoring.jaeger.read.readAll`
+
+==== Via Port-Forward (Local Development / Debugging)
+
+[source,bash]
+----
+kubectl port-forward -n foundation-cluster-monitoring \
+  svc/jaegerv2-storage-collector-extension 16687:16686
+----
+
+Then open `http://localhost:16687` in a browser.
+
+[IMPORTANT]
+====
+**Zscaler proxy gotcha:** If your machine runs the Zscaler client, it intercepts `localhost` connections. Work around this with:
+
+* `curl --noproxy "localhost,127.0.0.1" http://localhost:16687`
+* Or launch Chrome with `--no-proxy-server` flag
+====
+
+
+== Summary: How It All Connects
+
+[source,text]
+----
+┌──────────────┐   traceparent    ┌──────────────┐
+│  APISIX       │ ──────────────► │ Spring Boot   │
+│  (root span)  │    header       │ (child span)  │
+└──────┬───────┘                  └──────┬───────┘
+       │ OTLP HTTP :4318                  │ OTLP HTTP :4318
+       ▼                                  ▼
+┌─────────────────────────────────────────────────┐
+│            jaegerv2 Collector                    │
+│   receivers:[otlp,zipkin] → batch → export      │
+└─────────────────────┬───────────────────────────┘
+                      │ gRPC :4317
+                      ▼
+┌─────────────────────────────────────────────────┐
+│          jaegerv2-storage                        │
+│   Storage (memory / ES)  +  Query UI (:16686)   │
+└─────────────────────────────────────────────────┘
+       ▲                           ▲
+       │ gRPC :4317                │ HTTP :16686
+┌──────┴───────┐            ┌─────┴──────┐
+│   Zitadel     │            │   Browser / │
+│  (OTel gRPC)  │            │   Kiali     │
+└──────────────┘            └────────────┘
+----
+
+{empty} +
+
+*Next: xref:ex-tracing-part2b-apisix-jdbc-kiali.adoc[Part 2b — APISIX Plugin, JDBC Tracing & Kiali]*

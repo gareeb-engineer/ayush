@@ -1,0 +1,83 @@
+= AWS Cloud Engineering
+:page-role: engineering
+:description: Production AWS patterns — EKS private clusters, VPC design, IAM least-privilege with IRSA, and cost optimization strategies from real infrastructure
+:keywords: AWS, EKS, VPC, IAM, IRSA, cost optimization, private cluster, VPC endpoints, reserved instances, spot instances
+
+[.lead]
+_AWS gives you 200+ services. Production engineering is knowing which 15 to use and how to keep them from bankrupting you._
+
+== Overview
+
+This page covers AWS patterns from the perspective of running production Kubernetes workloads — the VPC design that makes private clusters possible, the IAM architecture that keeps pods least-privileged, and the cost engineering that keeps finance from killing your project.
+
+The focus is EKS-centric because that is where platform engineering meets cloud engineering. Every pattern here was learned from running real workloads, not from reading whitepapers.
+
+== Key Patterns
+
+=== Pattern 1: EKS Private Cluster Architecture
+
+A truly private EKS cluster means the API server endpoint has no public access. This changes everything:
+
+* **Private API endpoint only** — disable public endpoint. All `kubectl` access goes through VPN or bastion within the VPC
+* **VPC endpoints for AWS services** — ECR (both `ecr.api` and `ecr.dkr`), S3 (gateway endpoint for image layers), STS (for IRSA token exchange), CloudWatch Logs
+* **Private DNS resolution** — enable private DNS on endpoints so pods resolve `ecr.amazonaws.com` to private IPs without custom CoreDNS config
+* **Node bootstrap** — nodes need to reach the EKS API to join the cluster. With private-only endpoint, node security groups must allow HTTPS to the control plane ENIs
+
+Missing a single VPC endpoint means pods hang on image pulls or AWS SDK calls with no useful error — just timeouts.
+
+=== Pattern 2: VPC Design for Production Workloads
+
+VPC design decisions are permanent. Getting them wrong means rebuilding from scratch:
+
+* **CIDR planning** — `/16` VPC with room for expansion. Account for EKS pod networking consuming IPs (with VPC CNI, each pod gets a real VPC IP)
+* **Subnet strategy** — 3 AZs minimum. Private subnets for workloads, isolated subnets for databases (no NAT route), public subnets only for ALB ingress
+* **Secondary CIDR blocks** — when your initial CIDR runs out of IPs (common with large EKS clusters), add a secondary block for pod networking
+* **Transit Gateway vs. VPC Peering** — peering is cheaper for 2-3 VPCs. Transit Gateway pays for itself at 5+ VPCs or when you need transitive routing
+
+The biggest VPC mistake: choosing a `/24` because "we won't need many IPs" and running out when EKS pods consume the entire block in a week.
+
+=== Pattern 3: IAM Least-Privilege with IRSA
+
+IAM Roles for Service Accounts (IRSA) eliminates the need for node-level IAM roles that give every pod on a node the same permissions:
+
+* **One IAM role per service** — each microservice gets its own role scoped to exactly what it needs (specific S3 bucket, specific DynamoDB table)
+* **Trust policy scoping** — the role's trust policy restricts assumption to a specific namespace and service account, not just "any pod in the cluster"
+* **Condition keys** — use `sts:ExternalId` and OIDC subject conditions to prevent cross-namespace role assumption
+* **Audit trail** — CloudTrail logs show which pod (via service account) assumed which role, enabling per-service blast radius analysis
+
+Anti-pattern: a single "eks-node-role" with `S3FullAccess`, `DynamoDBFullAccess`, and `SecretsManagerReadWrite` attached to the node group. Every compromised pod gets everything.
+
+=== Pattern 4: Cost Optimization
+
+Cloud cost engineering is a production discipline, not a quarterly review exercise:
+
+* **Right-sizing** — Kubernetes resource requests should drive instance selection. If pods request 2 CPU / 4GB, running `m5.xlarge` (4 CPU / 16GB) wastes memory. Use Karpenter or Cluster Autoscaler with mixed instance types
+* **Spot instances for stateless workloads** — batch processing, dev environments, CI runners. Use interruption handlers and spread across multiple instance types/AZs
+* **Reserved capacity for baseline** — compute savings plans for the steady-state baseline (minimum nodes that always run). Spot for burst, on-demand for the gap
+* **VPC endpoint cost awareness** — each interface endpoint costs ~$7.50/month/AZ. With 3 AZs and 10 endpoints, that is $225/month just for endpoints. Evaluate whether NAT Gateway would be cheaper for low-traffic services
+* **Data transfer** — cross-AZ traffic between pods costs $0.01/GB each way. Place chatty services in the same AZ using topology-aware scheduling
+
+== Production Considerations
+
+VPC endpoint troubleshooting consumes more time than you expect:
+
+* **Security group on endpoints** — the endpoint's security group must allow inbound HTTPS (443) from pod/node CIDR ranges. A missing rule looks like "service unreachable" with no helpful error
+* **DNS resolution timing** — after creating an endpoint, private DNS propagation can take minutes. Pods started during this window fail and may need restart
+* **IAM role debugging** — when IRSA token exchange fails, check: (1) OIDC provider exists and thumbprint is correct, (2) trust policy matches the exact service account name, (3) STS VPC endpoint exists in private clusters
+* **Cost governance** — tag everything with team/environment/service. Use AWS Cost Explorer with tag-based grouping. Set billing alarms per team. Kill unused resources with automated nightly scripts in dev accounts
+
+== Troubleshooting
+
+Common AWS/EKS production issues:
+
+* **Pods stuck in Pending — insufficient IPs** — VPC CNI exhausted available IPs in the subnet. Add secondary CIDR or enable prefix delegation (`ENABLE_PREFIX_DELEGATION=true`)
+* **ImagePullBackOff in private cluster** — missing ECR VPC endpoints, or endpoint security group doesn't allow traffic from node subnets
+* **IRSA "AccessDenied"** — trust policy condition mismatch. The OIDC subject format is `system:serviceaccount:NAMESPACE:SA_NAME` — any typo gives a useless access denied
+* **Cross-account access** — resource policy on the target (S3 bucket policy, KMS key policy) must explicitly allow the cross-account role ARN
+* **Node group stuck in "Updating"** — usually a launch template change that requires instance replacement. Check if the new AMI is available in all configured AZs
+
+== Related
+
+* xref:case-studies:kubernetes-platform.adoc[Case Study: Air-Gapped Kubernetes Platform] — full air-gapped EKS deployment using these patterns
+* xref:architecture:aws-architecture.adoc[AWS Architecture] — multi-account and networking design decisions
+* xref:platform-engineering:terraform.adoc[Terraform & IaC] — how this infrastructure is codified and managed

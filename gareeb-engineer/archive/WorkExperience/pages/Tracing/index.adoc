@@ -1,0 +1,6 @@
+== Distributed Tracing
+
+* xref:Tracing/ex-tracing-part1-concepts-terms.adoc[Part 1 — Concepts & Terms]
+* xref:Tracing/ex-tracing-part2a-otel-jaeger.adoc[Part 2a — OpenTelemetry & Jaeger V2]
+* xref:Tracing/ex-tracing-part2b-apisix-jdbc-kiali.adoc[Part 2b — API-Gateway, JDBC & Kiali]
+* xref:Tracing/ex-tracing-part2c-protocols.adoc[Part 2c — Protocols]

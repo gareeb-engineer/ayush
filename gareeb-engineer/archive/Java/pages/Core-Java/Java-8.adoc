@@ -1,0 +1,19 @@
+Lambda Expressions
+
+Functional Interfaces
+
+Default Methods in Interfaces
+
+Static Methods in Interfaces
+
+Predicate (https://www.youtube.com/watch?v=hVcQ5S50CY8)
+
+Funciton
+
+Consumer
+
+Method Reference & Consumer Reference (::) Operator
+
+Stream API
+
+Date & Time API

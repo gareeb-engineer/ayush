@@ -1,0 +1,564 @@
+= Distributed Tracing — Concepts and Terms
+:toc: left
+:toc-title: Contents
+:toclevels: 3
+:sectnums:
+:source-highlighter: highlight.js
+:icons: font
+
+[.lead]
+Concepts and terminology learned while implementing end-to-end distributed tracing across
+APISIX, Zitadel, and Java Spring Boot services using OpenTelemetry and Jaeger V2.
+
+---
+
+== What Is Distributed Tracing?
+
+=== The Problem It Solves
+
+In a monolith, when a request fails or is slow, you look at one log file.
+In a microservices system, a single user request can pass through 5–10 services.
+Each service logs independently. A slow response could be caused by any hop.
+
+Without tracing you have to correlate logs from APISIX, service-1,
+service-2, service-3, and Zitadel manually — matching timestamps
+and hoping the clocks are in sync. This is practically impossible at scale.
+
+**Distributed tracing** solves this by:
+
+* Assigning a single *trace ID* to the entire journey of one request
+* Recording a *span* for every meaningful operation in every service
+* Linking all spans to the same trace ID so you see the full picture as a single waterfall
+* Measuring exact durations so you can pinpoint which service or query was slow
+
+=== Tracing vs Logging vs Metrics
+
+[cols="1,2,2", options="header"]
+|===
+| Signal | What It Captures | Best For
+
+| *Metrics*
+| Numeric aggregates over time (request rate, error rate, latency p99)
+| Alerting — know _that_ something is wrong
+
+| *Logs*
+| Timestamped text events from individual services
+| Debugging — know _what_ happened in one service
+
+| *Traces*
+| Causal chain of operations across all services for one request
+| Root-cause analysis — know _where_ the problem is across services
+|===
+
+[NOTE]
+====
+Metrics tell you _something_ is slow. Traces tell you _which service and which query_
+is slow. Logs tell you _why_ that query failed. Together they form the
+**three pillars of observability**.
+====
+
+=== Observability vs Monitoring
+
+* **Monitoring** — watching known failure modes (CPU high, pod down)
+* **Observability** — ability to understand the *internal state* of a system from its
+  external outputs (metrics, logs, traces)
+
+Tracing is an observability tool — it lets you answer questions about behavior you
+did not predict in advance.
+
+---
+
+== Core Concepts
+
+=== Span
+
+A **span** is the fundamental unit of work in distributed tracing.
+Every time a service does something meaningful it records a span.
+
+A span contains:
+
+[cols="1,3", options="header"]
+|===
+| Field | Description
+
+| Span ID
+| Unique 8-byte (16 hex char) identifier for this operation
+
+| Trace ID
+| 16-byte (32 hex char) ID shared by all spans in the same request journey
+
+| Parent Span ID
+| The span ID of the operation that called this one. Empty on the root span.
+
+| Operation name
+| Human-readable label: `GET /api/users`, `SELECT * FROM sessions`, `send email`
+
+| Start time
+| Epoch timestamp in nanoseconds when the operation started
+
+| Duration
+| How long the operation took (end - start)
+
+| Status
+| `OK`, `ERROR`, or `UNSET`
+
+| Attributes / Tags
+| Key-value pairs: `http.status_code=200`, `db.statement=SELECT ...`, `net.peer.name=postgres`
+
+| Events
+| Time-stamped log messages attached to the span (e.g. exception stack trace)
+
+| Span kind
+| `SERVER` (inbound request), `CLIENT` (outbound call), `INTERNAL`, `PRODUCER`, `CONSUMER`
+|===
+
+.Example span (JSON representation as stored in Jaeger)
+[source,json]
+----
+{
+  "traceID": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "spanID":  "00f067aa0ba902b7",
+  "parentSpanID": "a2fb4a1d1a96d312",
+  "operationName": "GET /api/v2/resources/list",
+  "startTime": 1747123456789000,
+  "duration": 45231,
+  "tags": [
+    {"key": "http.method",      "value": "GET"},
+    {"key": "http.status_code", "value": 200},
+    {"key": "net.peer.name",    "value": "service-1.app"}
+  ]
+}
+----
+
+=== Trace
+
+A **trace** is the complete record of a single request journey across all services.
+It is a collection of spans that all share the same `traceID`.
+
+In Jaeger's UI a trace is displayed as a **waterfall** — time on the X-axis,
+each span on its own row, indented to show parent-child relationships.
+
+[source]
+----
+[apisix]                GET /service1/api/v2/...          |████████████████████| 48ms
+  [service-1]           HTTP GET /api/v2/...              |  ████████████████ | 44ms
+    [service-1]         SELECT * FROM items ...           |    ████           |  6ms
+    [service-1]         SELECT * FROM item_map ...        |        ████      |  5ms
+----
+
+=== Root Span
+
+The **root span** is the first span created for a request. It has no parent span ID.
+In the waterfall it appears at the top / leftmost indentation.
+
+In this project, **APISIX creates the root span** the moment an HTTP request arrives
+at the data-plane gateway. Every downstream service creates child spans underneath it.
+
+=== Child Span
+
+A **child span** has a `parentSpanID` pointing to another span.
+When service A calls service B, service B creates a child span under service A's span.
+When a service runs a database query, the query span is a child of the HTTP handler span.
+
+.Span tree for one authenticated API request
+[source]
+----
+Root span — APISIX (traceID=abc123, spanID=001, parentSpanID=none)
+│
+├── Child — service-1 HTTP handler (spanID=002, parent=001)
+│   ├── Child — SELECT * FROM items WHERE ... (spanID=003, parent=002)
+│   └── Child — SELECT * FROM item_details WHERE ... (spanID=004, parent=002)
+│
+└── Child — service-2 token validation (spanID=005, parent=001)
+    └── Child — SELECT * FROM tokens WHERE id=... (spanID=006, parent=005)
+----
+
+=== Trace Context / Context Propagation
+
+**Context propagation** is the mechanism by which a trace ID and parent span ID
+travel from one service to the next.
+
+Without propagation each service would start a new independent trace.
+Propagation "stitches" them together into one end-to-end trace.
+
+The context is carried in HTTP headers. The most common formats are:
+
+[cols="1,2", options="header"]
+|===
+| Format | Header(s) Used
+
+| W3C Trace Context (current standard)
+| `traceparent`, `tracestate`
+
+| B3 (Zipkin / old Jaeger)
+| `X-B3-TraceId`, `X-B3-SpanId`, `X-B3-Sampled`, `X-B3-ParentSpanId`
+
+| Jaeger (legacy)
+| `uber-trace-id`
+
+| AWS X-Ray
+| `X-Amzn-Trace-Id`
+|===
+
+In this project, W3C `traceparent` is used throughout — APISIX writes it,
+Spring Boot 3 / Micrometer reads it. No translation needed.
+
+=== Sampling
+
+**Sampling** controls what fraction of requests are traced.
+
+Tracing every request (100%) adds CPU, memory, and network overhead.
+In production, a sampling rate of 1–10% is common.
+
+[cols="1,3", options="header"]
+|===
+| Strategy | How It Works
+
+| *Head-based sampling*
+| Decision is made at the **first service** (root span). All downstream services follow
+  the same decision via the `flags` byte in `traceparent` (`01` = sample, `00` = drop).
+
+| *Tail-based sampling*
+| Decision is made **after** the full trace is collected. Lets you keep only traces
+  with errors or high latency. More accurate but needs a buffer.
+
+| *Probability / rate sampling*
+| Randomly sample N% of requests. Simple. Default in most SDKs.
+
+| *Adaptive sampling*
+| Dynamically adjusts rate based on traffic volume.
+|===
+
+[IMPORTANT]
+====
+Head-based sampling means: if APISIX decides NOT to sample a request (flags=`00`),
+all downstream Spring Boot services also skip recording — even though they received
+the request. This is why the sampling rate must be set at the entry point (APISIX),
+not per-service.
+
+In this project `management.tracing.sampling.probability` in Spring Boot services
+controls the *service-level* sampling, but APISIX's decision overrides it for
+requests that already carry a `traceparent` header with `flags=00`.
+====
+
+=== Instrumentation
+
+**Instrumentation** is the code that creates spans. There are two kinds:
+
+* **Auto-instrumentation** — the OTel SDK or a library transparently wraps frameworks
+  and creates spans without you writing any tracing code.
+  Spring Boot 3 + `micrometer-tracing-bridge-otel` gives you HTTP spans for free.
+
+* **Manual instrumentation** — you write code to start and end spans:
++
+[source,java]
+----
+Span span = tracer.spanBuilder("my-operation").startSpan();
+try (Scope scope = span.makeCurrent()) {
+    // your code
+} finally {
+    span.end();
+}
+----
+
+In this project all instrumentation is auto-instrumentation:
+APISIX uses a built-in Lua plugin; Spring Boot uses the Micrometer bridge;
+JDBC spans come from the `datasource-micrometer-spring-boot` library proxy.
+
+=== JDBC / Database Spans
+
+By default, Spring Boot auto-instrumentation only creates HTTP-level spans.
+To also get SQL query spans as children of the HTTP span, a DataSource proxy is needed.
+
+The library `net.ttddyy.observation:datasource-micrometer-spring-boot` wraps the
+`DataSource` bean with a proxy that fires a `JdbcObservation` event on every query.
+The Micrometer → OTel bridge converts each observation into a span.
+
+Result in Jaeger:
+[source]
+----
+[service-1] HTTP GET /api/v2/resources/...                   44ms
+  [service-1] SELECT * FROM items                            6ms   ← JDBC span
+  [service-1] SELECT * FROM item_map                         5ms   ← JDBC span
+----
+
+---
+
+== Key Terms Reference
+
+=== Identifiers
+
+[cols="1,1,3", options="header"]
+|===
+| Term | Format | Meaning
+
+| *Trace ID*
+| 128-bit / 32 hex chars
+| Unique identifier for a complete request journey. Same value in every span
+  belonging to that request.
+
+| *Span ID*
+| 64-bit / 16 hex chars
+| Unique identifier for one operation within a trace.
+
+| *Parent Span ID*
+| 64-bit / 16 hex chars
+| The Span ID of the caller. Empty/absent on the root span.
+|===
+
+=== Span Attributes (OTel Semantic Conventions)
+
+OpenTelemetry defines standard attribute names so tools can understand spans
+from any language or framework.
+
+[cols="1,2", options="header"]
+|===
+| Attribute | Meaning
+
+| `http.method`
+| HTTP verb: GET, POST, PUT, DELETE
+
+| `http.url`
+| Full request URL
+
+| `http.status_code`
+| HTTP response status
+
+| `db.system`
+| Database type: postgresql, mysql, redis
+
+| `db.statement`
+| SQL query text (may be redacted in production)
+
+| `db.name`
+| Database/schema name
+
+| `net.peer.name`
+| Hostname of the remote service called
+
+| `net.peer.port`
+| Port of the remote service
+
+| `rpc.method`
+| gRPC method name
+
+| `error`
+| `true` when the span represents an error
+|===
+
+=== Telemetry Pipeline Terms
+
+[cols="1,3", options="header"]
+|===
+| Term | Meaning
+
+| *Exporter*
+| Component inside the application that sends spans to a backend.
+  In Spring Boot: `opentelemetry-exporter-otlp` sends spans via OTLP HTTP to the Jaeger collector.
+
+| *Collector*
+| A standalone proxy/pipeline that receives spans from applications,
+  processes them, and forwards them to a storage backend.
+  In this project: Jaeger V2 collector (running as an `OpenTelemetryCollector` CR).
+
+| *Backend / Storage*
+| Where spans are persisted and queried. In this project: Jaeger V2 storage pod
+  (in-memory or Elasticsearch).
+
+| *Receiver*
+| Input protocol on the collector. Jaeger V2 accepts OTLP gRPC (4317) and OTLP HTTP (4318).
+
+| *Processor*
+| Transforms spans before export. The `batch` processor groups spans to reduce write traffic.
+
+| *Pipeline*
+| receiver → processor → exporter chain defined in the collector config.
+
+| *plugin_metadata*
+| APISIX-specific term. A cluster-wide config object that provides shared settings
+  (like the collector address) to a plugin. Without it the APISIX opentelemetry plugin
+  aborts silently on every request.
+
+| *Sampling probability*
+| Fraction of requests to trace. `0.0` = none, `1.0` = all. Set via
+  `management.tracing.sampling.probability` in Spring Boot or `ZITADEL_TRACING_FRACTION`
+  in Zitadel.
+|===
+
+=== Span Kinds
+
+[cols="1,3", options="header"]
+|===
+| Kind | When Used
+
+| `SERVER`
+| The span represents handling an inbound request (HTTP server, gRPC server).
+  Spring Boot HTTP handler spans are SERVER.
+
+| `CLIENT`
+| The span represents making an outbound call (HTTP client, DB query).
+  JDBC spans are CLIENT kind.
+
+| `INTERNAL`
+| An internal operation that is neither a server nor a client call.
+
+| `PRODUCER`
+| Message sent to a queue/topic (Kafka, AMQP).
+
+| `CONSUMER`
+| Message received from a queue/topic.
+|===
+
+---
+
+== The `traceparent` Header — Deep Dive
+
+=== Format
+
+[source]
+----
+traceparent: 00-<traceID>-<parentSpanID>-<flags>
+----
+
+[cols="1,1,3", options="header"]
+|===
+| Field | Length | Meaning
+
+| Version
+| `00` (2 hex)
+| Always `00` in the current W3C spec.
+
+| Trace ID
+| 32 hex chars (16 bytes)
+| The ID of the overall trace — same value at every hop.
+
+| Parent Span ID
+| 16 hex chars (8 bytes)
+| The span ID of the *caller's* current span. The receiver uses this as its parent.
+
+| Flags
+| `01` or `00` (2 hex)
+| `01` = sampled (record this trace). `00` = not sampled (drop).
+|===
+
+=== Real Example
+
+[source]
+----
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+             ^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^  ^^
+             |   traceID (32 hex = 16 bytes)        parentSpanID      flags
+             version
+----
+
+* `traceID` = `4bf92f3577b34da6a3ce929d0e0e4736`
+* `parentSpanID` = `00f067aa0ba902b7` (the APISIX gateway span)
+* `flags` = `01` → this request is being sampled, record spans
+
+=== What Each Service Does With It
+
+.APISIX (creates the root span — no incoming traceparent)
+. Generates a new random `traceID`
+. Creates its own `spanID`
+. Sets `parentSpanID = none` (root)
+. Adds `traceparent: 00-<traceID>-<own spanID>-01` to the proxied request
+
+.Spring Boot service (receives traceparent)
+. Reads `traceID` → attaches its new spans to this trace
+. Reads `parentSpanID` → records APISIX as its parent
+. Reads `flags` → if `00`, skips recording entirely
+. Creates its own `spanID` for the HTTP handler span
+. Passes updated `traceparent` (with *its* spanID as the new parent) to any downstream calls
+
+=== `tracestate` Header (companion)
+
+[source]
+----
+tracestate: vendor1=value1,vendor2=value2
+----
+
+Optional companion to `traceparent`. Carries vendor-specific metadata.
+For example Jaeger might store its sampling priority here.
+Most implementations today only use `traceparent`.
+
+=== `baggage` Header (W3C Baggage standard)
+
+[source]
+----
+baggage: userId=123,region=us-east-1,tenantId=ge-corp
+----
+
+A separate W3C standard that travels *alongside* `traceparent`.
+Lets you propagate arbitrary business key-values across all service hops without
+each service having to re-fetch the data.
+
+[NOTE]
+====
+`baggage` is NOT part of the trace — it does not create spans or appear in Jaeger.
+It is a carrier for contextual metadata. Useful for correlation (e.g. user ID on
+every log line) but must be used carefully — baggage travels in every HTTP request
+and adds header size.
+====
+
+---
+
+== Sampling — How It Works End-to-End
+
+[source]
+----
+1. Browser → APISIX
+   - APISIX opentelemetry plugin rolls the dice: random() < 0.1 → SAMPLED
+   - Creates root span, adds traceparent with flags=01
+
+2. APISIX → service-1
+   - Request carries: traceparent: 00-abc123-apisix_spanID-01
+   - Spring Boot reads flags=01 → RECORD
+   - Creates HTTP handler span as child of APISIX span
+
+3. service-1 → PostgreSQL (JDBC)
+   - datasource-micrometer proxy fires JdbcObservation
+   - Bridge creates SQL span as child of HTTP handler span
+   - No traceparent needed — same JVM, same trace context
+
+4. All spans exported to Jaeger collector via OTLP HTTP :4318
+   Collector batches and forwards to storage pod
+   Jaeger UI shows full waterfall with shared traceID abc123
+----
+
+If at step 1 APISIX had rolled flags=`00` (not sampled):
+
+* `traceparent` is still forwarded to Spring Boot (flags=`00`)
+* Spring Boot sees `flags=00` and skips recording — even though it could
+* No spans are created anywhere for this request
+* Jaeger sees nothing for this request
+
+This is **head-based sampling** — the decision at the entry point cascades downstream.
+
+---
+
+== Observability Stack — Where Tracing Fits
+
+[source]
+----
+Application (Spring Boot / APISIX / Zitadel)
+│
+│  [OTel SDK / Micrometer bridge / Lua plugin]
+│  creates spans in memory
+│
+▼
+OTLP exporter
+│  sends spans via HTTP (port 4318) or gRPC (port 4317)
+│
+▼
+OpenTelemetry Collector (Jaeger V2 collector pod)
+│  receives → batches → forwards
+│
+▼
+Jaeger Storage pod
+│  persists spans (memory / Elasticsearch)
+│
+▼
+Jaeger Query UI
+   HTTP :16686 — browse traces, search by service, traceID, tags
+   gRPC :16685 — used by Kiali for trace integration
+----

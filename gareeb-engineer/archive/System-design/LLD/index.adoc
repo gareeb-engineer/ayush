@@ -1,0 +1,60 @@
+== Design Patterns:
+
+=== Creational Design Patterns
+- Singleton
+- Factory Method
+- Abstract Factory  
+- Builder
+- Prototype
+
+=== Structural Design Patterns
+- Adapter
+- Decorator
+- Composite
+- Facade
+- Proxy
+- Bridge
+
+=== Behavioral Design Patterns
+- Observer
+- Strategy
+- Iterator
+- Command
+- State
+- Template Method
+
+== SOLID Principles:
+- Single Responsibility Principle
+- Open/Closed Principle
+- Liskov Substitution Principle
+- Interface Segregation Principle
+- Dependency Inversion Principle
+
+== Java Core Concepts: 
+- Object-Oriented Programming (OOP): Inheritance, Polymorphism, Abstraction, Encapsulation
+- Core Concepts: Classes, Objects, Methods (Method Overloading & Dynamic Method Dispatch), Constructors, Access Modifiers, Static vs Instance, Exception Handling, Collections Framework, Generics, Multithreading, Synchronization, I/O Streams, Serialization, Reflection, Annotations
+- Java 8 Features: Lambda Expressions, Functional Interfaces, Default Methods in Interfaces, Static Methods in Interfaces, Predicate, Function, Consumer, Method Reference & Consumer Reference (::) Operator, Stream API, Date & Time API
+
+- Java 9+ Features: Modules, JShell, Private Methods in Interfaces, Reactive Streams, Process API Improvements, Collection Factory Methods, HTTP Client API, Var Handles, Stack Walking API, Flow API, Compact Strings, Multi-Release JARs, Improved Type Inference for Generic Instance Creation (Diamond Operator), Local-Variable Type Inference (var), Text Blocks, Records, Sealed Classes, Pattern Matching for instanceof, Switch Expressions, Helpful NullPointerExceptions, Foreign Function & Memory API (Incubator), Virtual Threads (Project Loom), Structured Concurrency (Project Loom), Record Patterns (Preview), Pattern Matching for switch (Preview)
+
+== Concurrency & Thread Safety: 
+- Race conditions
+- Deadlocks
+- Thread starvation
+- Thread pools
+- Executors
+- Locks
+- Atomic variables
+- Volatile keyword
+- Concurrent collections
+- Fork/Join framework
+
+== Code Quality & Clean Code:
+- Meaningful names
+- One abstraction level per method
+- Small classes
+- DRY principle
+- YAGNI principle
+- KISS principle
+- Code reviews
+- Refactoring techniques

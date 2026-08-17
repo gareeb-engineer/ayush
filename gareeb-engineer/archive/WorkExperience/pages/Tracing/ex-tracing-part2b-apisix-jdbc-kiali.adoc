@@ -1,0 +1,381 @@
+= Distributed Tracing — Part 2b: APISIX Plugin, JDBC Tracing & Kiali
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+:source-highlighter: highlight.js
+
+[.lead]
+Covers the APISIX OpenTelemetry Lua plugin, the datasource-micrometer library for JDBC spans,
+and Kiali's trace integration with Jaeger.
+
+== APISIX OpenTelemetry Plugin
+
+=== What It Is
+
+APISIX is an API gateway built on Nginx/OpenResty (Lua). The `opentelemetry` plugin is a
+built-in Lua module that creates spans for every HTTP request passing through the gateway.
+
+It ships inside the APISIX container image — no extra binary or sidecar needed.
+
+=== What It Does
+
+[source,text]
+----
+1. Incoming HTTP request hits APISIX
+2. opentelemetry plugin fires BEFORE proxying
+3. Creates a ROOT SPAN with a new traceID + spanID
+4. Injects traceparent header into the proxied request
+5. After backend responds, records response status + duration
+6. Batches the span and exports via OTLP HTTP to the Jaeger collector
+----
+
+=== Three Things Required to Activate
+
+[cols="1,2,2",options="header"]
+|===
+| Requirement | Where | Why
+
+| Plugin registration
+| `dataPlane.defaultConfig.plugins[]` array in `apisix/values.yaml`
+| APISIX will not load a plugin that is not in its master plugins list. Must be added in-place (not via `extraConfig`) because the config merge replaces arrays.
+
+| Plugin attributes (collector config)
+| `plugin_attr.opentelemetry` in `extraConfig` or `apisix-data-plane-extra` ConfigMap
+| Tells the plugin where to send spans — collector address, batch settings, service name.
+
+| Per-route enablement
+| `plugins:` block on each `ApisixRoute` or in `ApisixPluginConfig`
+| The plugin is loaded globally but only runs on routes that explicitly enable it.
+|===
+
+[IMPORTANT]
+====
+Without **all three**, tracing silently does nothing. The most common failure is forgetting
+per-route enablement — the plugin loads, creates no errors, but never fires.
+====
+
+=== plugin_metadata vs plugin_attr
+
+These are two different APISIX concepts — easy to confuse:
+
+[cols="1,3",options="header"]
+|===
+| Term | Meaning
+
+| `plugin_attr`
+| Static config in `config.yaml` (loaded at startup). Sets collector address, batch processor settings, service name. Cannot be changed at runtime without a restart.
+
+| `plugin_metadata`
+| Dynamic config stored in etcd, pushed via Admin API. Some plugins require it to function. The `opentelemetry` plugin logs a warning and **silently drops all spans** if plugin_metadata is not set.
+|===
+
+[CAUTION]
+====
+The error message when plugin_metadata is missing:
+
+`[warn] opentelemetry.lua:312: phase_func(): plugin_metadata is required for opentelemetry plugin to working properly`
+
+This is only a `warn` — APISIX continues to serve traffic. But **zero spans are created**.
+The fix is to either push plugin_metadata via the Admin API or have a Kubernetes Job do it on deploy.
+====
+
+=== Batch Span Processor Settings
+
+[source,yaml]
+----
+plugin_attr:
+  opentelemetry:
+    batch_span_processor:
+      max_queue_size: 1024       # max spans buffered in memory
+      batch_timeout: 2           # flush every 2 seconds
+      inactive_timeout: 1        # flush if idle for 1 second
+      max_export_batch_size: 16  # max spans per OTLP request
+      drop_on_queue_full: false  # block (backpressure) vs drop
+----
+
+=== `set_ngx_var: true`
+
+When enabled, the plugin exposes these nginx variables in every request context:
+
+[cols="1,2",options="header"]
+|===
+| Variable | Content
+
+| `$opentelemetry_trace_id`
+| The 32-hex-char trace ID for the current request
+
+| `$opentelemetry_span_id`
+| The 16-hex-char span ID of the APISIX root span
+
+| `$opentelemetry_context_traceparent`
+| The full `traceparent` header value
+|===
+
+These can be embedded in the APISIX access log format for log-trace correlation:
+
+[source,json]
+----
+{"uri":"/api/v2/resources","status":"200","trace_id":"4bf92f35...","traceparent":"00-4bf92f35...-01"}
+----
+
+=== Control Plane vs Data Plane — Plugin Lists Must Match
+
+APISIX in Foundation uses a **split architecture**:
+
+* **Control plane** — runs etcd + Admin API. Validates plugin configs pushed by the ingress controller.
+* **Data plane** — runs the actual nginx workers. Executes plugins on traffic.
+
+Both planes have their own `plugins:` list. If a plugin is in the data plane list but NOT
+in the control plane list, the ingress controller's attempt to push a route referencing
+that plugin will fail with:
+
+[source,json]
+----
+{"error_msg": "unknown plugin [opentelemetry]"}
+----
+
+The route silently stays out of APISIX. No crash, no restart — just a missing route.
+
+**Fix:** Add the plugin to BOTH `controlPlane.defaultConfig.plugins[]` and
+`dataPlane.defaultConfig.plugins[]`.
+
+
+== JDBC Tracing with datasource-micrometer
+
+=== The Problem
+
+Spring Boot 3 + Micrometer auto-instrumentation creates HTTP-level spans automatically.
+But SQL queries executed via JDBC are invisible — they happen inside the same JVM and
+do not trigger any HTTP-level observation.
+
+A trace without JDBC spans:
+[source,text]
+----
+[service-1.app] HTTP GET /api/v2/resources/...             44ms
+                                                           (where did the 44ms go? unknown)
+----
+
+=== The Solution: datasource-micrometer-spring-boot
+
+[cols="1,2",options="header"]
+|===
+| Field | Value
+
+| Group ID
+| `net.ttddyy.observation`
+
+| Artifact ID
+| `datasource-micrometer-spring-boot`
+
+| Version used
+| `1.2.1`
+
+| Available in
+| `dig-grid-artifactory.apps.ge.com/artifactory/virtual-mvn` (confirmed)
+|===
+
+=== How It Works
+
+[source,text]
+----
+1. Spring Boot auto-config detects the library on the classpath
+2. Library wraps the existing DataSource bean with a proxy (ProxyDataSource)
+3. Every JDBC call (query, update, batch) passes through the proxy
+4. Proxy fires a JdbcObservation event via the Micrometer Observation API
+5. micrometer-tracing-bridge-otel converts the observation into an OTel span
+6. The span includes: SQL statement text, execution time, connection details
+7. The span is a CHILD of the current HTTP handler span (same trace context)
+----
+
+A trace WITH JDBC spans:
+[source,text]
+----
+[service-1.app] HTTP GET /api/v2/resources/...              44ms
+  [service-1.app] SELECT * FROM items ...                    6ms  ← JDBC span
+  [service-1.app] SELECT * FROM item_map ...                 5ms  ← JDBC span
+----
+
+=== What You Need in pom.xml
+
+Three dependencies work together — the first two are typically already present
+in Foundation services via the BOM:
+
+[source,xml]
+----
+<!-- 1. Bridge: Micrometer Observation → OTel Span -->
+<dependency>
+    <groupId>io.micrometer</groupId>
+    <artifactId>micrometer-tracing-bridge-otel</artifactId>
+    <!-- version managed by foundation-spring-boot-bom -->
+</dependency>
+
+<!-- 2. Exporter: ships spans via OTLP HTTP to Jaeger -->
+<dependency>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-exporter-otlp</artifactId>
+    <!-- version managed by foundation-spring-boot-bom -->
+</dependency>
+
+<!-- 3. JDBC proxy: wraps DataSource to emit JdbcObservation events -->
+<dependency>
+    <groupId>net.ttddyy.observation</groupId>
+    <artifactId>datasource-micrometer-spring-boot</artifactId>
+    <version>1.2.1</version>
+    <!-- NOT in BOM — explicit version required -->
+</dependency>
+----
+
+No `application.properties` changes needed — the library auto-configures itself.
+
+=== Gotcha: Version Must Be in Artifactory
+
+The library is NOT in the `foundation-spring-boot-bom`. The version must be explicitly set,
+and that exact version must exist in the internal Artifactory instance. If the version is
+missing, Maven inside the Docker builder image will fail silently — the JAR is never produced,
+and the container crashes with:
+
+[source,text]
+----
+Error: Unable to access jarfile service-1.jar
+----
+
+Always confirm availability first:
+[source,bash]
+----
+mvn dependency:get -Dartifact=net.ttddyy.observation:datasource-micrometer-spring-boot:1.2.1 -B
+----
+
+
+== Kiali — Trace Integration
+
+=== What Kiali Is
+
+Kiali is a service mesh observability dashboard for Istio. It shows service topology,
+traffic flow, and health. It is deployed via the `monitoring-apps/kiali` chart.
+
+=== How It Connects to Jaeger
+
+Kiali reads traces from Jaeger V2 to overlay trace data on top of the service graph.
+
+[source,yaml]
+----
+# kiali/values.yaml
+kiali-server:
+  external_services:
+    tracing:
+      enabled: true
+      use_grpc: false
+      url: "http://jaegerv2-storage-collector-extension:16686"
+      in_cluster_url: "http://jaegerv2-storage-collector-extension.foundation-cluster-monitoring:16686"
+      useV2: true                 # ← use Jaeger V2 query API format
+----
+
+=== What It Shows
+
+* **Trace tab** on any service detail page — shows recent traces involving that service
+* **Span count** on the service graph edges — how many spans flowed between two services
+* **Latency overlay** — p50/p95/p99 latency derived from trace spans
+
+Kiali does NOT collect traces itself — it queries Jaeger's HTTP API on port 16686.
+
+
+== Zitadel OTel Integration
+
+=== How Zitadel Emits Traces
+
+Zitadel is a Go application. It uses the native Go OpenTelemetry SDK
+(`go.opentelemetry.io/otel`) to create spans for its internal operations:
+login flows, token introspection, OIDC endpoints, database queries.
+
+=== Configuration — Environment Variables Only
+
+[cols="1,2",options="header"]
+|===
+| Variable | Purpose
+
+| `ZITADEL_TRACING_TYPE`
+| `otel` to enable, `none` to disable, `log` for stdout only
+
+| `ZITADEL_TRACING_ENDPOINT`
+| Collector address. **gRPC port 4317, no http:// prefix.** Passed directly to `grpc.Dial`.
+
+| `ZITADEL_TRACING_FRACTION`
+| Sampling fraction as quoted string: `"0.1"` = 10%, `"1.0"` = 100%.
+|===
+
+[CAUTION]
+====
+Adding `http://` to `ZITADEL_TRACING_ENDPOINT` causes a fatal error:
+`transport: error while dialing: dial tcp: lookup http:`
+
+The Go OTel SDK's `otlptracegrpc.WithEndpoint()` expects `host:port`, not a URL.
+====
+
+=== What Spans Zitadel Creates
+
+[cols="1,2",options="header"]
+|===
+| Operation | Span Name Example
+
+| Token introspection
+| `op/OIDCRequestByAuthRequestID`
+
+| Login flow
+| `command/AddHumanUser`
+
+| Database query
+| `crdb/QueryRow`
+
+| Session check
+| `query/SessionByID`
+|===
+
+Zitadel's service name in Jaeger appears as `ZITADEL` (all caps — set by the Go SDK).
+
+
+== Summary Table — All Tools
+
+[cols="1,1,1,2",options="header"]
+|===
+| Tool | Language | Protocol to Jaeger | Role
+
+| Spring Boot 3 + Micrometer Bridge
+| Java
+| OTLP HTTP (:4318)
+| Auto-creates HTTP spans, propagates `traceparent`
+
+| datasource-micrometer-spring-boot
+| Java
+| (via Micrometer bridge)
+| Wraps DataSource to emit JDBC child spans
+
+| APISIX opentelemetry plugin
+| Lua
+| OTLP HTTP (:4318)
+| Creates root spans at the API gateway, injects `traceparent`
+
+| Zitadel
+| Go
+| OTLP gRPC (:4317)
+| Creates spans for OIDC/login/DB operations
+
+| Jaeger V2 Collector
+| Go (OTel Collector)
+| receives OTLP, exports to storage
+| Receives + batches + forwards spans
+
+| Jaeger V2 Storage
+| Go (OTel Collector)
+| receives gRPC from collector
+| Persists spans, serves Query UI
+
+| Kiali
+| Go
+| reads from Jaeger HTTP :16686
+| Overlays trace data on Istio service graph
+|===
+
+{empty} +
+
+*Next: xref:ex-tracing-part2c-protocols.adoc[Part 2c — Protocols: OTLP, W3C Trace Context, B3 & Legacy Formats]*

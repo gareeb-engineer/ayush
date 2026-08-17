@@ -1,0 +1,11 @@
+System Design of Tinder
+==============================
+
+Functional Requirements:
+
+Login logout
+
+
+
+
+Non functtional Requirements:

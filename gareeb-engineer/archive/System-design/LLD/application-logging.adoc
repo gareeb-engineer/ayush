@@ -1,0 +1,520 @@
+= Application Logging Notes
+:toc:
+:toclevels: 3
+:sectnums:
+
+== What is Logging?
+
+Logging is the process of recording application events, system activities, errors, and business operations to help with:
+
+* Debugging
+* Monitoring
+* Auditing
+* Troubleshooting
+* Performance Analysis
+
+---
+
+== Why Logging is Important
+
+Benefits:
+
+* Understand application behavior
+* Diagnose production issues
+* Trace request execution
+* Monitor business events
+* Investigate failures
+
+Example:
+
+[source,text]
+----
+User places order
+      ↓
+Payment Service
+      ↓
+Inventory Service
+      ↓
+Order Service
+----
+
+Logs help trace the entire flow.
+
+---
+
+== Logging Levels
+
+[source,text]
+----
+TRACE
+  ↓
+DEBUG
+  ↓
+INFO
+  ↓
+WARN
+  ↓
+ERROR
+----
+
+=== TRACE
+
+Very detailed execution information.
+
+Use For:
+
+* Method entry/exit
+* Internal framework behavior
+* Detailed troubleshooting
+
+Example:
+
+[source,java]
+----
+log.trace("Entering calculateTax()");
+----
+
+---
+
+=== DEBUG
+
+Developer-focused information.
+
+Use For:
+
+* Intermediate calculations
+* Variable values
+* Application flow debugging
+
+Example:
+
+[source,java]
+----
+log.debug("Discount calculated={}", discount);
+----
+
+---
+
+=== INFO
+
+Important business or system events.
+
+Use For:
+
+* Application startup
+* User actions
+* Successful workflow completion
+
+Example:
+
+[source,java]
+----
+log.info("Order created. orderId={}", orderId);
+----
+
+---
+
+=== WARN
+
+Unexpected but recoverable situations.
+
+Use For:
+
+* Retry operations
+* Fallback mechanisms
+* Configuration issues
+
+Example:
+
+[source,java]
+----
+log.warn("Cache unavailable. Falling back to DB");
+----
+
+---
+
+=== ERROR
+
+Failures requiring attention.
+
+Use For:
+
+* Exceptions
+* Database failures
+* External service failures
+
+Example:
+
+[source,java]
+----
+log.error("Payment failed. orderId={}", orderId, ex);
+----
+
+---
+
+== Logging Level Decision Tree
+
+[source,text]
+----
+Did operation fail?
+    │
+    ├── Yes
+    │     │
+    │     ├── Recoverable?
+    │     │       │
+    │     │       ├── Yes → WARN
+    │     │       └── No  → ERROR
+    │
+    └── No
+          │
+          ├── Important event?
+          │       │
+          │       ├── Yes → INFO
+          │       └── No
+          │
+          └── Diagnostic?
+                  │
+                  ├── Yes → DEBUG
+                  └── Very Detailed → TRACE
+----
+
+---
+
+== What to Log
+
+=== Business Events
+
+[source,java]
+----
+log.info("Order created. orderId={}", orderId);
+----
+
+=== State Changes
+
+[source,java]
+----
+log.info(
+    "Status changed from {} to {}",
+    oldStatus,
+    newStatus
+);
+----
+
+=== External Service Calls
+
+[source,java]
+----
+log.info("Calling payment service");
+----
+
+=== Retries
+
+[source,java]
+----
+log.warn("Retry attempt={}", retryCount);
+----
+
+=== Exceptions
+
+[source,java]
+----
+log.error(
+    "Failed to create order. orderId={}",
+    orderId,
+    ex
+);
+----
+
+---
+
+== What NOT to Log
+
+Never log:
+
+* Passwords
+* JWT Tokens
+* API Keys
+* Credit Card Numbers
+* CVV
+* Aadhaar Numbers
+* Passport Numbers
+* Medical Records
+
+Bad Example:
+
+[source,java]
+----
+log.info("Password={}", password);
+----
+
+Good Example:
+
+[source,java]
+----
+log.info("User authenticated. userId={}", userId);
+----
+
+---
+
+== Structured Logging
+
+=== Traditional Logging
+
+[source,text]
+----
+Order created successfully
+----
+
+Problems:
+
+* Difficult to search
+* Difficult to aggregate
+
+---
+
+=== Structured Logging
+
+[source,json]
+----
+{
+  "timestamp":"2026-06-13T10:00:00Z",
+  "level":"INFO",
+  "service":"order-service",
+  "orderId":"ORD123",
+  "userId":"USER1",
+  "message":"Order created"
+}
+----
+
+Benefits:
+
+* Machine readable
+* Searchable
+* Better monitoring
+* Easier analytics
+
+---
+
+== Contextual Logging (MDC)
+
+MDC = Mapped Diagnostic Context
+
+Used to attach request-specific information.
+
+Example:
+
+[source,java]
+----
+MDC.put("requestId", requestId);
+----
+
+Log Output:
+
+[source,text]
+----
+requestId=abc123 Order Created
+requestId=abc123 Payment Started
+requestId=abc123 Payment Completed
+----
+
+Common Context Fields:
+
+* requestId
+* traceId
+* spanId
+* userId
+* orderId
+* transactionId
+
+---
+
+== Good Logging Example
+
+[source,java]
+----
+log.info(
+    "Order creation started. userId={}",
+    userId
+);
+
+try {
+
+    Order order = repository.save(orderRequest);
+
+    log.info(
+        "Order created. orderId={}",
+        order.getId()
+    );
+
+} catch (Exception ex) {
+
+    log.error(
+        "Order creation failed. userId={}",
+        userId,
+        ex
+    );
+}
+----
+
+---
+
+== Bad Logging Example
+
+[source,java]
+----
+log.info("Inside createOrder");
+log.info("After save");
+log.info("Done");
+----
+
+Problems:
+
+* No context
+* No identifiers
+* Difficult to debug
+
+---
+
+== Logging in Microservices
+
+Include:
+
+* timestamp
+* serviceName
+* environment
+* requestId
+* traceId
+* spanId
+* userId (when applicable)
+
+Example:
+
+[source,json]
+----
+{
+  "service":"payment-service",
+  "requestId":"abc123",
+  "traceId":"xyz789",
+  "level":"INFO",
+  "message":"Payment completed"
+}
+----
+
+---
+
+== Golden Rules
+
+=== Rule 1
+
+Log events, not code lines.
+
+Bad:
+
+[source,java]
+----
+log.info("Reached line 50");
+----
+
+Good:
+
+[source,java]
+----
+log.info("Order created. orderId={}", orderId);
+----
+
+---
+
+=== Rule 2
+
+Always log context.
+
+Include:
+
+* requestId
+* userId
+* orderId
+* transactionId
+
+---
+
+=== Rule 3
+
+Never log secrets.
+
+Avoid:
+
+* Passwords
+* Tokens
+* API Keys
+* Sensitive PII
+
+---
+
+=== Rule 4
+
+Prefer structured logging.
+
+Prefer:
+
+[source,json]
+----
+{
+  "orderId":"123",
+  "status":"CREATED"
+}
+----
+
+Over:
+
+[source,text]
+----
+Order 123 created
+----
+
+---
+
+=== Rule 5
+
+Every ERROR log should answer:
+
+[source,text]
+----
+What failed?
+Which entity was affected?
+Why did it fail?
+What exception occurred?
+----
+
+---
+
+== Quick Cheat Sheet
+
+[source,text]
+----
+TRACE  -> Very detailed execution info
+
+DEBUG  -> Developer troubleshooting
+
+INFO   -> Important business/system events
+
+WARN   -> Recoverable issue
+
+ERROR  -> Operation failed
+----
+
+[source,text]
+----
+Always Log:
+✓ Request IDs
+✓ Business Events
+✓ State Changes
+✓ Exceptions
+✓ External Calls
+
+Never Log:
+✗ Passwords
+✗ Tokens
+✗ API Keys
+✗ Credit Card Data
+✗ Sensitive PII
+----

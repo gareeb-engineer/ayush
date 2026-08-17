@@ -1,0 +1,102 @@
+= ArgoCD & GitOps Operations
+:page-role: engineering
+:description: Production ArgoCD patterns — app-of-apps, sync waves, multi-cluster management, health checks, and debugging sync loops in large-scale GitOps deployments
+:keywords: ArgoCD, GitOps, sync waves, app-of-apps, multi-cluster, health checks, Kubernetes, Helm, sync loop, resource tracking
+
+[.lead]
+_ArgoCD is the easy part. Keeping 200 Applications in sync across 5 clusters without sync loops, drift alerts at 2 AM, or OOM-killed controllers — that's the engineering._
+
+== Overview
+
+ArgoCD turns Git into the single source of truth for cluster state. Simple in concept, complex in practice — especially when you manage multiple clusters, handle CRD migrations, and need to reason about sync ordering for interdependent resources.
+
+This page covers operational patterns for running ArgoCD at scale: the app-of-apps pattern for managing Application lifecycle, sync waves for ordered deployments, multi-cluster strategies, and the health check customization that prevents false-positive degraded states.
+
+== Key Patterns
+
+=== Pattern 1: App-of-Apps for Application Lifecycle
+
+Managing 50+ ArgoCD Applications as individual resources is unsustainable. App-of-apps turns Application management into a Git problem:
+
+* *Root Application* points to a directory of Application manifests
+* Adding a new service = adding a YAML file to that directory + commit
+* Removing a service = deleting the file (ArgoCD prunes the Application and its child resources)
+* Use `finalizers` on Applications to ensure child resources are cleaned up on delete
+
+Structure:
+```
+apps/
+├── platform/
+│   ├── cert-manager.yaml
+│   ├── external-secrets.yaml
+│   └── postgres-operator.yaml
+└── workloads/
+    ├── service-a.yaml
+    ├── service-b.yaml
+    └── service-c.yaml
+```
+
+Separate platform apps from workload apps — different sync policies, different approval gates.
+
+=== Pattern 2: Sync Waves and Resource Hooks
+
+When resources have ordering dependencies, sync waves prevent the "namespace doesn't exist yet" race:
+
+* *Wave -2*: Namespaces, ResourceQuotas
+* *Wave -1*: CRDs, cluster-scoped RBAC
+* *Wave 0*: Operators, controllers (default)
+* *Wave 1*: Custom Resources (operator must be running first)
+* *Wave 2*: Application workloads that depend on CRs
+
+Annotations: `argocd.argoproj.io/sync-wave: "-1"` on the resource manifest.
+
+Combine with `PreSync` hooks for one-time setup (DB migrations) and `PostSync` hooks for validation (smoke tests).
+
+=== Pattern 3: Multi-Cluster Management
+
+One ArgoCD instance managing multiple clusters. The patterns that work:
+
+* *Hub-spoke model*: Central ArgoCD in management cluster, deploys to workload clusters via cluster secrets
+* *ApplicationSet generators*: `cluster` generator creates Applications per registered cluster. Add a cluster = automatic workload deployment.
+* *Pull-based for air-gapped*: When target clusters can't be reached from hub, use ArgoCD agent mode or per-cluster ArgoCD instances syncing from the same Git repo.
+
+Critical: cluster credentials stored as Kubernetes Secrets. Use ExternalSecrets or Sealed Secrets — never plain text in Git.
+
+=== Pattern 4: Custom Health Checks
+
+ArgoCD's default health assessment doesn't understand custom resources. A PostgreSQL CR that's `Running` but not yet accepting connections shows as "Healthy" by default.
+
+Custom health checks via `argocd-cm` ConfigMap:
+
+* Define Lua scripts that inspect resource `.status` fields
+* Return `Healthy`, `Progressing`, `Degraded`, or `Suspended`
+* Essential for: PostgreSQL Operator clusters, Kafka topics, Certificate resources, Istio VirtualServices
+
+Without custom health checks, ArgoCD reports green while your database is still bootstrapping replicas.
+
+== Production Considerations
+
+*Sync loop detection*: ArgoCD detects drift and reconciles. But if a controller mutates a field that ArgoCD also manages (e.g., HPA modifying replica count), you get infinite sync loops. Fix: use `ignoreDifferences` in the Application spec for controller-managed fields.
+
+*Resource tracking modes*: Default annotation-based tracking breaks when annotations exceed the 262144-byte limit (large CRDs). Switch to `resourceTrackingMethod: label` or the newer `annotation+label` hybrid. The PostgreSQL Operator CRD hit this exact limit.
+
+*Performance at scale (500+ Applications)*: ArgoCD controller memory grows linearly with managed resources. Tune: increase `--repo-server-timeout`, shard controllers with `--application-controller-shard`, and offload manifest generation to dedicated repo-server pods.
+
+*Refresh vs. Hard Refresh*: Normal refresh compares cached manifests. Hard refresh re-clones and re-renders. Schedule hard refreshes during maintenance windows, not every 3 minutes.
+
+== Troubleshooting
+
+*OutOfSync but no diff visible*: Usually caused by server-side defaulting. Kubernetes adds fields ArgoCD didn't specify (e.g., `strategy.rollingUpdate`). Fix: explicitly set all fields you care about, or add to `ignoreDifferences` for server-managed defaults.
+
+*Infinite reconciliation on CRD changes*: When CRD schema changes, existing CRs may gain or lose fields. ArgoCD sees this as drift. During CRD migrations: pause sync, apply CRD, let operator reconcile CRs, then resume sync. Use sync waves to automate this ordering.
+
+*Application stuck in `Progressing`*: Health check never returns `Healthy`. Check if the resource has a finalizer blocking deletion, or if a Deployment is waiting for a rollout that will never complete (image pull failure in init container). `argocd app get <app> --hard-refresh` forces re-evaluation.
+
+*Repo-server OOM during manifest generation*: Large Helm charts with many templates exhaust repo-server memory. Fix: increase `--repo-server-memory-limit`, or split monolithic charts into smaller composable charts.
+
+== Related
+
+* xref:case-studies:gitops-platform.adoc[Case Study: GitOps Delivery Platform]
+* xref:case-studies:postgres-operator-upgrade.adoc[Case Study: PostgreSQL Operator Upgrade]
+* xref:platform-engineering:helm.adoc[Helm Engineering]
+* xref:devops:gitops.adoc[GitOps Principles & Practices]

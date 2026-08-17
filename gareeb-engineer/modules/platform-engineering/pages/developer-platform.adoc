@@ -1,0 +1,88 @@
+= Developer Platform Engineering
+:page-role: engineering
+:description: Building internal developer platforms — self-service environments, golden path templates, reusable Helm libraries, and platform-as-product thinking
+:keywords: developer platform, internal developer platform, golden paths, self-service, Helm libraries, platform engineering, developer experience, IDP
+
+[.lead]
+_A platform nobody adopts is just infrastructure with extra steps. The engineering is in making the right thing the easy thing._
+
+== Overview
+
+Developer platform engineering is the discipline of building self-service systems that make other engineers productive without requiring them to understand the full stack beneath them. It is not "building tools" — it is designing product experiences for an internal audience.
+
+The measure of a good platform is not how powerful it is. It is how few Slack messages the platform team gets per deploy. If developers still need a platform engineer to ship a service, the platform has failed.
+
+== Key Patterns
+
+=== Pattern 1: Self-Service Environments
+
+Developers should spin up production-like environments without filing tickets:
+
+* **Namespace-per-PR** — each pull request gets an ephemeral namespace with the full service stack. Review happens on real infrastructure, not screenshots
+* **Templated environment specs** — a `environment.yaml` in the repo defines what the service needs (database, cache, message queue). The platform provisions it
+* **Time-bounded lifecycle** — environments auto-delete after 48 hours or PR merge. No zombie namespaces consuming cluster resources
+* **Credential injection** — environments get scoped credentials automatically. Developers never copy secrets from production into test setups
+
+The friction target: zero additional steps beyond opening a PR. If developers need to "request an environment" or "run a script," adoption drops to zero.
+
+=== Pattern 2: Golden Path Templates
+
+Golden paths are opinionated project templates that encode best practices by default:
+
+* **Service scaffold generators** — `create-service` CLI that generates a repo with Dockerfile, Helm chart, CI pipeline, observability config, and health check endpoints already wired
+* **Pre-configured observability** — tracing, metrics, and structured logging are included in the template, not added as an afterthought six months later
+* **Security defaults** — network policies, resource limits, non-root containers, read-only filesystems — baked into the template Helm chart
+* **Upgrade path** — when the platform evolves (new tracing library, new base image), provide automated PRs to existing services. Templates are not fire-and-forget
+
+The golden path is not mandatory — it is the path of least resistance. Teams can deviate, but deviating should require explicit effort, not the other way around.
+
+=== Pattern 3: Reusable Helm Libraries
+
+Instead of every team writing their own Helm chart from scratch:
+
+* **Library chart pattern** — a shared Helm library chart (`platform-lib`) that defines common templates: deployment, service, ingress, HPA, PDB
+* **Values-only consumption** — service teams write only a `values.yaml` specifying their image, ports, resource requests. The library chart renders the full Kubernetes manifest set
+* **Versioned releases** — library chart is versioned. Teams pin a version and upgrade deliberately. Breaking changes require a major version bump
+* **Escape hatches** — teams can override any template via Helm's template precedence. The library provides 80% of what everyone needs; the remaining 20% is customizable
+
+This eliminates "1000 slightly different Deployment manifests" across the org and makes cluster-wide changes (adding pod disruption budgets, changing health check defaults) a single library update.
+
+=== Pattern 4: Platform as a Product
+
+Internal platforms fail when built like infrastructure projects instead of products:
+
+* **Internal SLOs** — the platform has uptime targets, deployment latency targets, and MTTR targets. Track them visibly
+* **Feedback loops** — regular developer surveys, support channel analysis, and adoption metrics. Ship what developers ask for, not what the platform team finds interesting
+* **Incremental rollout** — new platform features roll out to willing early-adopter teams first, then broader org. Never force-migrate everyone simultaneously
+* **Documentation as product** — if the docs require a Slack conversation to understand, the docs are broken. Invest in runbooks, quickstarts, and troubleshooting guides as first-class deliverables
+
+== Production Considerations
+
+Measuring developer experience is hard but necessary:
+
+* **Deployment frequency** — how often do teams deploy? If the platform is good, frequency increases. If it is painful, teams batch changes
+* **Lead time to first deploy** — how long from "new service idea" to "running in staging"? Target: under 2 hours for a standard service using golden path
+* **Platform support tickets** — track volume and category. Recurring questions signal missing documentation or poor UX. Self-service should reduce ticket volume over time
+* **Adoption without mandate** — the strongest signal. If teams voluntarily migrate to your platform without being forced, you have built something good. If adoption requires management mandate, investigate why
+
+Platform adoption strategies that work:
+
+* Start with the team that has the most pain, not the most political power
+* Solve one thing completely (e.g., "deploy to staging") before expanding scope
+* Make migration incremental — teams can adopt pieces of the platform without going all-in on day one
+* Kill the old path only after the new path is proven. Premature deprecation breeds resentment
+
+== Troubleshooting
+
+Common developer platform challenges:
+
+* **"It works differently than production"** — environment parity is non-negotiable. If ephemeral environments differ from prod (different resource limits, missing service mesh), developers lose trust
+* **Template drift** — generated projects diverge from the template over time. Provide automated upgrade tooling (Renovate-style PRs for platform dependencies)
+* **Over-abstraction** — hiding too much complexity means developers cannot debug issues. Expose enough that developers can reason about failures without needing platform team involvement
+* **Scope creep** — the platform team builds everything anyone asks for. Use product management discipline: prioritize ruthlessly, say no to niche requests, focus on the 80% use case
+
+== Related
+
+* xref:case-studies:gitops-platform.adoc[Case Study: GitOps Delivery Platform] — the deployment foundation that self-service environments build on
+* xref:platform-engineering:helm.adoc[Helm Engineering] — the chart library patterns in detail
+* xref:platform-engineering:argocd.adoc[ArgoCD & GitOps] — deployment automation layer powering the platform

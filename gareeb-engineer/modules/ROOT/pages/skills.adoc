@@ -1,0 +1,82 @@
+= Skills
+:page-role: skills
+:description: Technical skills organized by role track — Java/Backend, DevOps, and Platform Engineering
+:keywords: Java, Spring Boot, Kubernetes, Terraform, AWS, DevOps, Platform Engineering
+
+[.lead]
+Skills organized by engineering track with proficiency levels. Click a track from the homepage to jump directly here.
+
+[#java-backend]
+== Java / Backend Engineer
+
+=== Primary / Expert
+
+* Java (11/17+)
+* Spring Boot
+* Microservices architecture
+* JDBC & database integration
+
+=== Proficient
+
+* PostgreSQL
+* Data Structures & Algorithms
+* System Design
+* RESTful API development
+* OpenTelemetry (Java instrumentation)
+* JVM tuning & performance
+
+=== Familiar
+
+* Spring Cloud
+* Redis
+* Kafka
+* API versioning & contract testing
+
+[#devops]
+== DevOps Engineer
+
+=== Primary / Expert
+
+* Kubernetes (EKS, cluster management, application deployment)
+* Terraform (Infrastructure as Code)
+* AWS (EC2, S3, RDS, API Gateway, CloudWatch, CloudTrail)
+
+=== Proficient
+
+* Helm (chart authoring & deployments)
+* Docker (containerization & multi-stage builds)
+* Prometheus & Grafana (monitoring dashboards)
+* Jenkins (CI/CD pipelines)
+* OpenTelemetry & Jaeger v2 (distributed tracing)
+* Certificate management (OpenSSL, Keytool — creation, renewal, x509)
+
+=== Familiar
+
+* GitHub Actions
+* Ansible
+* ELK / EFK stack
+* CloudFormation
+
+[#platform-engineering]
+== Platform Engineering
+
+=== Primary / Expert
+
+* Kubernetes internals (operators, CRDs, workload orchestration)
+* ArgoCD / GitOps (declarative continuous delivery)
+* PostgreSQL Operator (cloud-native database lifecycle)
+
+=== Proficient
+
+* Developer experience tooling (self-service deployments, golden-path templates)
+* Litmus Chaos (chaos engineering & resilience testing)
+* Helm chart library design
+* Observability platforms (Prometheus + Grafana + Jaeger stack)
+* Air-gapped environment provisioning
+
+=== Familiar
+
+* Backstage (developer portals)
+* SLOs & error budgets
+* Cost engineering & right-sizing
+* Flux CD

@@ -1,0 +1,92 @@
+= GitOps Principles
+:page-role: engineering
+:description: GitOps delivery patterns — pull-based reconciliation, drift detection, multi-environment promotion, and anti-patterns from production ArgoCD deployments
+:keywords: GitOps, ArgoCD, pull-based deployment, drift detection, reconciliation, environment promotion, Kubernetes, declarative delivery
+
+[.lead]
+_GitOps is not "storing YAML in Git." It is a reconciliation loop that makes your cluster converge to declared state — continuously, automatically, and auditably._
+
+== Overview
+
+GitOps shifts the deployment model from imperative ("run this script to deploy") to declarative ("the cluster should look like this"). The Git repository becomes the single source of truth, and an operator (ArgoCD, Flux) continuously reconciles actual state against desired state.
+
+The value is not the YAML-in-Git part — every team does that. The value is the reconciliation loop that detects and corrects drift without human intervention.
+
+== Key Patterns
+
+=== Pattern 1: Pull-Based vs Push-Based Delivery
+
+*Push-based* (traditional CI/CD): Pipeline finishes → runs `kubectl apply` or `helm upgrade` against the cluster.
+
+*Pull-based* (GitOps): Agent inside the cluster watches the Git repo → detects changes → applies them.
+
+*Why pull wins in production*:
+- No cluster credentials in CI — the agent already has access
+- Drift correction is automatic (push-based has no mechanism to detect post-deploy mutations)
+- Audit trail is the Git log, not pipeline logs that get rotated
+
+*When push still makes sense*:
+- One-off migrations or data scripts
+- Environments without a persistent reconciliation agent
+- Teams not ready to manage the reconciliation operator itself
+
+=== Pattern 2: Environment-per-Directory vs Environment-per-Branch
+
+Two schools of multi-environment management:
+
+*Environment-per-branch* (`main` → prod, `staging` → staging):
+- Intuitive for developers
+- Merge direction creates implicit promotion
+- Problem: branches diverge, cherry-picks create inconsistency, no clear diff between environments
+
+*Environment-per-directory* (single branch, `envs/dev/`, `envs/staging/`, `envs/prod/`):
+- Single source of truth on one branch
+- Promotion = copy/update files from one directory to another (via PR)
+- Diff between environments is a `diff` between directories
+- Recommended for production GitOps at scale
+
+*Trade-off*: Directory-based requires tooling to manage the copy/promote step (Kustomize overlays, Helm values per env). Branch-based is simpler but breaks at scale.
+
+=== Pattern 3: PR-Based Promotion with Approval Gates
+
+Production promotion should be a Pull Request:
+- Change is visible (diff shows exactly what enters prod)
+- Approval is explicit (team lead or SRE reviews)
+- Rollback is `git revert` (not "find the last working Helm values")
+
+*Implementation*:
+....
+Developer PR ──▶ merge to main ──▶ ArgoCD syncs dev
+                                        │
+                              Automated PR to staging/
+                                        │
+                              Review + merge ──▶ ArgoCD syncs staging
+                                        │
+                              Promotion PR to prod/
+                                        │
+                              SRE approval + merge ──▶ ArgoCD syncs prod
+....
+
+== Production Considerations
+
+*Drift detection frequency*: ArgoCD defaults to 3-minute sync intervals. For critical services, reduce to 1 minute. For large repos with 500+ resources, 3 minutes prevents API server overload.
+
+*Secret management in GitOps*: Secrets cannot live in Git as plaintext. Options: Sealed Secrets (encrypted in Git, decrypted in-cluster), External Secrets Operator (pulls from Vault/AWS SM), or SOPS with age/KMS encryption.
+
+*Sync waves and ordering*: Not all resources are equal. CRDs before CRs, namespaces before deployments, configmaps before pods that mount them. ArgoCD sync waves handle this explicitly.
+
+*The "Out of Sync" trap*: Operators that mutate resources (e.g., adding status fields, defaulting values) cause perpetual OutOfSync. Solution: configure ignoreDifferences in ArgoCD for operator-managed fields.
+
+== Troubleshooting
+
+*Perpetual OutOfSync*: Usually caused by admission webhooks or controllers that mutate resources after apply. Identify the drifting fields with `argocd app diff`, then add to `ignoreDifferences`.
+
+*Sync fails silently*: Resource applied but pod crashes. ArgoCD marks it "Synced" because the resource exists — health check catches the failure. Configure custom health checks for CRDs.
+
+*Promotion bottleneck*: If staging-to-prod PRs pile up, the process is too manual. Automate the PR creation, keep human approval only for the merge action.
+
+== Related
+
+* xref:case-studies:gitops-platform.adoc[Case Study: GitOps Delivery Platform]
+* xref:platform-engineering:argocd.adoc[ArgoCD Operations]
+* xref:devops:cicd.adoc[CI/CD Architecture]

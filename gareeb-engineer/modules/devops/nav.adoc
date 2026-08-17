@@ -1,0 +1,5 @@
+.DevOps & Delivery
+* xref:cicd.adoc[CI/CD Architecture]
+* xref:gitops.adoc[GitOps Principles]
+* xref:devsecops.adoc[DevSecOps]
+* xref:automation.adoc[Infrastructure Automation]

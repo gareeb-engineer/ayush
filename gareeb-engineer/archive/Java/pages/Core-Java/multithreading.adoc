@@ -1,0 +1,1053 @@
+= Java Multithreading & Concurrency
+:toc:
+:toclevels: 4
+:sectnums:
+
+== Introduction
+
+Multithreading is the ability of a program to execute multiple threads concurrently.
+
+A thread is the smallest unit of execution managed by the JVM.
+
+Benefits:
+
+* Better CPU utilization
+* Improved application responsiveness
+* Parallel task execution
+* Scalability for server applications
+
+Example Use Cases:
+
+* Web servers handling multiple requests
+* File processing
+* Database operations
+* Background jobs
+* Microservices
+* Messaging systems
+
+---
+
+== High-Level Architecture
+
+[source,text]
+----
+Java Multithreading
+│
+├── Thread Creation
+│   ├── Thread
+│   ├── Runnable
+│   └── Callable
+│
+├── Thread Lifecycle
+│
+├── Executor Framework
+│
+├── Future & CompletableFuture
+│
+├── Synchronization
+│
+├── Atomic Classes
+│
+├── Concurrent Collections
+│
+└── Thread Coordination
+----
+
+== Thread Basics
+
+A thread represents an independent path of execution.
+
+Every Java application starts with a main thread.
+
+[source,java]
+----
+public static void main(String[] args) {
+    System.out.println(Thread.currentThread().getName());
+}
+----
+
+Output:
+
+[source,text]
+----
+main
+----
+
+---
+
+== Thread Creation
+
+=== Using Thread Class
+
+[source,java]
+----
+class MyThread extends Thread {
+
+    @Override
+    public void run() {
+        System.out.println("Thread running");
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+
+        MyThread thread = new MyThread();
+        thread.start();
+    }
+}
+----
+
+Use Case:
+
+* Small demos
+* Learning purposes
+
+Not recommended for production code.
+
+---
+
+=== Using Runnable Interface
+
+[source,java]
+----
+class Task implements Runnable {
+
+    @Override
+    public void run() {
+        System.out.println("Executing task");
+    }
+}
+----
+
+[source,java]
+----
+Thread thread = new Thread(new Task());
+thread.start();
+----
+
+Advantages:
+
+* Better design
+* Supports inheritance of another class
+
+Use Cases:
+
+* Web applications
+* Enterprise applications
+* Spring Boot services
+
+---
+
+=== Using Lambda (Java 8+)
+
+[source,java]
+----
+Thread thread =
+        new Thread(() ->
+                System.out.println("Task running"));
+
+thread.start();
+----
+
+Use Cases:
+
+* Quick background tasks
+* Modern Java applications
+
+---
+
+== Runnable Interface
+
+Package:
+
+[source,java]
+----
+java.lang
+----
+
+Definition:
+
+[source,java]
+----
+@FunctionalInterface
+public interface Runnable {
+
+    void run();
+}
+----
+
+Characteristics:
+
+* Functional Interface
+* No return value
+* Cannot throw checked exceptions
+
+Use Cases:
+
+* Logging
+* Email sending
+* Background processing
+
+---
+
+== Callable Interface
+
+Package:
+
+[source,java]
+----
+java.util.concurrent
+----
+
+Definition:
+
+[source,java]
+----
+public interface Callable<V> {
+
+    V call() throws Exception;
+}
+----
+
+Advantages over Runnable:
+
+* Returns a value
+* Can throw checked exceptions
+
+Example:
+
+[source,java]
+----
+Callable<Integer> task = () -> 100;
+----
+
+Use Cases:
+
+* Database queries
+* API calls
+* Calculations
+
+---
+
+== Runnable vs Callable
+
+[cols="1,1,1"]
+|===
+|Feature |Runnable |Callable
+
+|Method
+|run()
+|call()
+
+|Return Value
+|No
+|Yes
+
+|Checked Exception
+|No
+|Yes
+
+|Package
+|java.lang
+|java.util.concurrent
+|===
+
+---
+
+== Thread Lifecycle
+
+[source,text]
+----
+NEW
+ │
+ ▼
+RUNNABLE
+ │
+ ▼
+RUNNING
+ │
+ ├──► BLOCKED
+ │       │
+ │       ▼
+ └──── RUNNABLE
+
+RUNNING
+ │
+ ▼
+TERMINATED
+----
+
+=== NEW
+
+[source,java]
+----
+Thread t = new Thread();
+----
+
+Thread object exists.
+
+---
+
+=== RUNNABLE
+
+[source,java]
+----
+t.start();
+----
+
+Ready to run.
+
+---
+
+=== RUNNING
+
+CPU schedules thread execution.
+
+---
+
+=== BLOCKED / WAITING
+
+Thread waits for:
+
+* sleep()
+* join()
+* I/O
+* lock acquisition
+
+---
+
+=== TERMINATED
+
+run() method completed.
+
+---
+
+== Important Thread Methods
+
+=== start()
+
+Creates a new thread.
+
+[source,java]
+----
+thread.start();
+----
+
+---
+
+=== run()
+
+Contains thread logic.
+
+[source,java]
+----
+public void run() {
+}
+----
+
+---
+
+=== sleep()
+
+Pauses current thread.
+
+[source,java]
+----
+Thread.sleep(1000);
+----
+
+Use Case:
+
+* Polling
+* Delays
+
+---
+
+=== join()
+
+Wait for another thread.
+
+[source,java]
+----
+thread.join();
+----
+
+Use Case:
+
+* Report generation
+* Batch jobs
+
+---
+
+=== interrupt()
+
+Requests interruption.
+
+[source,java]
+----
+thread.interrupt();
+----
+
+Use Case:
+
+* Graceful shutdown
+
+---
+
+== Executor Framework
+
+Package:
+
+[source,java]
+----
+java.util.concurrent
+----
+
+Introduced to avoid manual thread management.
+
+=== Architecture
+
+[source,text]
+----
+Executor
+   │
+   ▼
+ExecutorService
+   │
+   ├── ThreadPoolExecutor
+   └── ScheduledExecutorService
+----
+
+---
+
+== Executor Interface
+
+[source,java]
+----
+public interface Executor {
+
+    void execute(Runnable command);
+}
+----
+
+Simple task execution.
+
+---
+
+== ExecutorService
+
+Main interface for production systems.
+
+[source,java]
+----
+ExecutorService service;
+----
+
+Common methods:
+
+[source,java]
+----
+submit()
+shutdown()
+shutdownNow()
+invokeAll()
+invokeAny()
+----
+
+Use Cases:
+
+* REST APIs
+* Batch processing
+* Event processing
+
+---
+
+== Executors Utility Class
+
+Factory class for thread pools.
+
+=== Fixed Thread Pool
+
+[source,java]
+----
+Executors.newFixedThreadPool(5);
+----
+
+Use Case:
+
+* Web servers
+
+---
+
+=== Cached Thread Pool
+
+[source,java]
+----
+Executors.newCachedThreadPool();
+----
+
+Use Case:
+
+* Short-lived tasks
+
+---
+
+=== Single Thread Executor
+
+[source,java]
+----
+Executors.newSingleThreadExecutor();
+----
+
+Use Case:
+
+* Sequential task execution
+
+---
+
+=== Scheduled Thread Pool
+
+[source,java]
+----
+Executors.newScheduledThreadPool(2);
+----
+
+Use Case:
+
+* Cron jobs
+* Periodic tasks
+
+---
+
+== Future
+
+Represents the result of an asynchronous computation.
+
+[source,java]
+----
+Future<Integer> future;
+----
+
+Common methods:
+
+[source,java]
+----
+get()
+cancel()
+isDone()
+isCancelled()
+----
+
+Example:
+
+[source,java]
+----
+Future<Integer> future =
+        executor.submit(() -> 100);
+
+Integer result = future.get();
+----
+
+Use Cases:
+
+* API calls
+* Parallel calculations
+
+---
+
+== CompletableFuture
+
+Package:
+
+[source,java]
+----
+java.util.concurrent
+----
+
+Java 8 asynchronous programming API.
+
+Example:
+
+[source,java]
+----
+CompletableFuture
+        .supplyAsync(() -> "Java")
+        .thenApply(String::toUpperCase)
+        .thenAccept(System.out::println);
+----
+
+Output:
+
+[source,text]
+----
+JAVA
+----
+
+---
+
+=== Important Methods
+
+[source,java]
+----
+supplyAsync()
+runAsync()
+thenApply()
+thenAccept()
+thenCompose()
+thenCombine()
+exceptionally()
+----
+
+Use Cases:
+
+* Microservices
+* Reactive systems
+* Parallel API calls
+
+---
+
+== Synchronization
+
+Used to prevent race conditions.
+
+Problem:
+
+[source,java]
+----
+count++;
+----
+
+Actually:
+
+[source,text]
+----
+Read
+Modify
+Write
+----
+
+Multiple threads can interfere.
+
+---
+
+== synchronized
+
+[source,java]
+----
+public synchronized void increment() {
+    count++;
+}
+----
+
+Advantages:
+
+* Simple
+* Built into JVM
+
+Use Cases:
+
+* Shared counters
+* Shared resources
+
+---
+
+== Lock Interface
+
+Package:
+
+[source,java]
+----
+java.util.concurrent.locks
+----
+
+Definition:
+
+[source,java]
+----
+Lock lock =
+        new ReentrantLock();
+----
+
+Usage:
+
+[source,java]
+----
+lock.lock();
+
+try {
+    // critical section
+}
+finally {
+    lock.unlock();
+}
+----
+
+Advantages:
+
+* Flexible
+* Try-lock support
+
+Use Cases:
+
+* High-performance systems
+* Banking applications
+
+---
+
+== volatile
+
+Guarantees visibility.
+
+[source,java]
+----
+private volatile boolean running;
+----
+
+Without volatile:
+
+Thread may read stale value.
+
+Use Cases:
+
+* Shutdown flags
+* Status indicators
+
+---
+
+== Atomic Classes
+
+Package:
+
+[source,java]
+----
+java.util.concurrent.atomic
+----
+
+Examples:
+
+[source,java]
+----
+AtomicInteger
+AtomicLong
+AtomicReference
+----
+
+Example:
+
+[source,java]
+----
+AtomicInteger counter =
+        new AtomicInteger();
+
+counter.incrementAndGet();
+----
+
+Advantages:
+
+* Lock-free
+* High performance
+
+Use Cases:
+
+* Counters
+* Metrics
+* Statistics
+
+---
+
+== Concurrent Collections
+
+Package:
+
+[source,java]
+----
+java.util.concurrent
+----
+
+=== ConcurrentHashMap
+
+Replacement for HashMap.
+
+[source,java]
+----
+ConcurrentHashMap<String,Integer>
+----
+
+Use Cases:
+
+* Caching
+* Session storage
+
+---
+
+=== CopyOnWriteArrayList
+
+Thread-safe list.
+
+[source,java]
+----
+CopyOnWriteArrayList<String>
+----
+
+Use Cases:
+
+* Configuration lists
+* Read-heavy applications
+
+---
+
+=== ConcurrentLinkedQueue
+
+Non-blocking queue.
+
+[source,java]
+----
+ConcurrentLinkedQueue<String>
+----
+
+Use Cases:
+
+* Messaging systems
+* Event queues
+
+---
+
+=== BlockingQueue
+
+Supports producer-consumer pattern.
+
+[source,java]
+----
+BlockingQueue<String>
+----
+
+Use Cases:
+
+* Task processing
+* Job queues
+
+---
+
+== Thread Coordination
+
+=== wait()
+
+Current thread waits.
+
+[source,java]
+----
+wait();
+----
+
+---
+
+=== notify()
+
+Wakes one waiting thread.
+
+[source,java]
+----
+notify();
+----
+
+---
+
+=== notifyAll()
+
+Wakes all waiting threads.
+
+[source,java]
+----
+notifyAll();
+----
+
+Use Cases:
+
+* Producer-consumer systems
+
+---
+
+== Common Problems
+
+=== Race Condition
+
+Multiple threads modify shared state simultaneously.
+
+Example:
+
+[source,text]
+----
+Expected: 2
+Actual: 1
+----
+
+Solution:
+
+* synchronized
+* Lock
+* AtomicInteger
+
+---
+
+=== Deadlock
+
+Two threads waiting forever.
+
+Example:
+
+[source,text]
+----
+Thread1 -> Lock A -> Lock B
+Thread2 -> Lock B -> Lock A
+----
+
+Solution:
+
+* Consistent lock ordering
+
+---
+
+=== Starvation
+
+Thread never gets CPU time.
+
+Solution:
+
+* Fair locks
+* Better scheduling
+
+---
+
+=== Livelock
+
+Threads keep reacting to each other without progress.
+
+Solution:
+
+* Retry strategies
+* Backoff mechanisms
+
+---
+
+== Interview Questions
+
+=== Difference Between start() and run()
+
+start():
+
+* Creates new thread
+
+run():
+
+* Executes in current thread
+
+---
+
+=== Runnable vs Callable
+
+Runnable:
+
+* No result
+
+Callable:
+
+* Returns result
+
+---
+
+=== synchronized vs Lock
+
+synchronized:
+
+* Simpler
+
+Lock:
+
+* More flexible
+
+---
+
+=== volatile vs synchronized
+
+volatile:
+
+* Visibility only
+
+synchronized:
+
+* Visibility + Mutual Exclusion
+
+---
+
+=== Future vs CompletableFuture
+
+Future:
+
+* Basic async result
+
+CompletableFuture:
+
+* Async pipelines and chaining
+
+---
+
+== Learning Roadmap
+
+[source,text]
+----
+1. Thread
+2. Runnable
+3. Lambda Runnable
+4. Thread Lifecycle
+5. Callable
+6. Future
+7. ExecutorService
+8. Thread Pools
+9. synchronized
+10. volatile
+11. AtomicInteger
+12. ReentrantLock
+13. Concurrent Collections
+14. wait()/notify()
+15. CompletableFuture
+16. Deadlock
+17. Race Conditions
+----
+
+== Summary
+
+Thread Creation:
+
+* Thread
+* Runnable
+* Callable
+
+Async Execution:
+
+* ExecutorService
+* Future
+* CompletableFuture
+
+Synchronization:
+
+* synchronized
+* Lock
+* volatile
+* Atomic Classes
+
+Thread-Safe Collections:
+
+* ConcurrentHashMap
+* CopyOnWriteArrayList
+* ConcurrentLinkedQueue
+* BlockingQueue
+
+Common Issues:
+
+* Race Condition
+* Deadlock
+* Starvation
+* Livelock
+
+Mastering these concepts covers the majority of Java concurrency questions encountered in backend and Spring Boot interviews.

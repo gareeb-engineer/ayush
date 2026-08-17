@@ -1,0 +1,107 @@
+= Disaster Recovery
+:page-role: engineering
+:description: Disaster recovery engineering — RTO/RPO-driven architecture, backup strategies with WAL-G, Patroni failover patterns, and DR testing methodology
+:keywords: Disaster Recovery, RTO, RPO, WAL-G, Patroni, PostgreSQL, Backup, Failover, DR Testing, Kubernetes
+
+[.lead]
+_Your disaster recovery plan is only as good as your last successful test restore. Everything else is a hope-based strategy._
+
+== Overview
+
+Disaster recovery for stateful workloads on Kubernetes is uniquely challenging — you're dealing with ephemeral infrastructure running persistent data. A node dies and your StatefulSet reschedules, but did Patroni elect a new leader cleanly? Is the WAL-G backup actually restorable, or is it a 200GB file you've never tested?
+
+This page covers DR patterns for PostgreSQL on Kubernetes (Zalando Operator + Patroni + WAL-G), but the principles apply to any stateful system: define your recovery objectives, automate your backups, test your restores, and practice failover until it's boring.
+
+== Key Patterns
+
+=== Pattern 1: RTO/RPO as Architecture Drivers
+
+Recovery Time Objective (RTO) and Recovery Point Objective (RPO) aren't documentation checkboxes — they're the parameters that determine your entire storage and replication architecture.
+
+* *RPO = 0* (zero data loss): Requires synchronous replication. Patroni with `synchronous_mode: true` ensures at least one replica has every committed transaction. Cost: write latency increases, risk of reduced availability if sync replica dies.
+* *RPO < 5 minutes*: WAL-G continuous archiving to S3. WAL segments ship every 60 seconds (configurable). Acceptable for most workloads.
+* *RPO < 1 hour*: Scheduled pg_dump or volume snapshots. Simple but limits point-in-time recovery options.
+
+RTO drives your failover automation:
+
+* *RTO < 30 seconds*: Patroni automatic failover (default behavior with proper DCS configuration)
+* *RTO < 5 minutes*: Manual failover with runbook (acceptable for non-critical environments)
+* *RTO < 1 hour*: Restore from backup — only viable if you've tested it recently
+
+=== Pattern 2: Backup Verification Through Test Restores
+
+A backup you haven't restored is not a backup. It's a liability.
+
+Automated verification pipeline:
+
+1. WAL-G ships base backup + WAL segments to S3 nightly
+2. CronJob spins up a temporary PostgreSQL pod weekly
+3. Pod restores from latest backup using `wal-g backup-fetch LATEST`
+4. Runs `pg_isready` and a validation query (`SELECT count(*) FROM critical_table`)
+5. Reports success/failure to monitoring (Prometheus pushgateway)
+6. Pod terminates — no persistent resources consumed
+
+If the CronJob fails, you get alerted *before* you need the backup. The alternative is discovering corruption during an actual disaster.
+
+=== Pattern 3: Runbook-Driven Recovery
+
+Every DR scenario needs a pre-written, tested runbook. Not "smart engineers will figure it out" — actual step-by-step instructions that a sleep-deprived on-call engineer can follow at 3 AM.
+
+Runbook structure:
+
+* *Trigger*: What alert or condition activates this runbook
+* *Verification*: How to confirm the scenario (not a false positive)
+* *Actions*: Numbered steps with exact commands
+* *Validation*: How to confirm recovery succeeded
+* *Escalation*: When to page the next person
+
+Patroni handles most PostgreSQL failover automatically. The runbook covers what to do when automatic failover *doesn't* work — split brain, DCS (etcd/ZooKeeper) failure, or simultaneous multi-node loss.
+
+== Production Considerations
+
+*WAL-G configuration essentials*:
+
+* Set `WALG_S3_PREFIX` per cluster — mixing WAL segments from different clusters is unrecoverable
+* Enable encryption at rest (`WALG_LIBSODIUM_KEY`) — backups contain production data
+* Retention policy: keep 7 daily + 4 weekly base backups minimum
+* Monitor `wal-g backup-list` output — gaps indicate archiving failures
+
+*Patroni failover gotchas*:
+
+* `maximum_lag_on_failover`: if replica is too far behind, Patroni won't promote it (data loss prevention)
+* DCS TTL must be shorter than pod termination grace period — otherwise Patroni thinks leader is alive during shutdown
+* After failover, old primary's timeline diverges — it must re-clone from new primary, not just reconnect
+
+*Kubernetes-specific DR concerns*:
+
+* PVC reclaim policy must be `Retain` for production — `Delete` means losing data when StatefulSet is deleted
+* Node failure vs. pod failure: if the node dies with local storage, data is gone. Always use network-attached PVs for stateful workloads
+* Cross-AZ replication: Patroni replicas should span availability zones. Pod anti-affinity rules enforce this.
+
+== Troubleshooting
+
+|===
+| Symptom | Likely Cause | Fix
+
+| WAL-G backup-fetch fails with "no backups found"
+| Wrong S3 prefix or IAM permissions
+| Verify `WALG_S3_PREFIX`, check pod ServiceAccount IAM role
+
+| Patroni failover takes > 30 seconds
+| DCS (etcd) latency or TTL misconfiguration
+| Check etcd health, reduce `loop_wait` and `ttl` settings
+
+| Restored database missing recent transactions
+| WAL archiving gap — segments weren't shipped before failure
+| Check `archive_command` success rate, reduce `archive_timeout`
+
+| Split-brain after network partition heals
+| Both nodes think they're primary
+| Manually demote one node: `patronictl restart --force`, verify timeline
+|===
+
+== Related
+
+* xref:case-studies:postgres-operator-upgrade.adoc[Case Study: PostgreSQL Operator Upgrade Investigation]
+* xref:observability.adoc[Observability — Monitoring Backup & Failover Health]
+* xref:troubleshooting.adoc[Kubernetes Troubleshooting Journal]

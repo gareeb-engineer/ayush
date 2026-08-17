@@ -1,0 +1,362 @@
+= Distributed Tracing — Part 2c: Protocols
+:toc: left
+:toclevels: 3
+:sectnums:
+:icons: font
+:source-highlighter: highlight.js
+
+[.lead]
+Covers all wire protocols and header formats used in distributed tracing —
+OTLP, W3C Trace Context, B3, and legacy Jaeger format.
+
+== OTLP — OpenTelemetry Protocol
+
+=== What It Is
+
+OTLP is the **native wire protocol of OpenTelemetry** for transmitting traces, metrics,
+and logs from applications to collectors/backends. It is the only protocol the OTel project
+officially supports long-term.
+
+=== Two Transports
+
+[cols="1,1,2,2",options="header"]
+|===
+| Transport | Port | Content Type | Used By (in Foundation)
+
+| **OTLP/gRPC**
+| `4317`
+| Protocol Buffers over HTTP/2
+| Zitadel (Go OTel SDK), Jaeger collector → storage forwarding
+
+| **OTLP/HTTP**
+| `4318`
+| Protocol Buffers or JSON over HTTP/1.1
+| Spring Boot services, APISIX opentelemetry plugin
+|===
+
+=== OTLP/HTTP Endpoint Paths
+
+[cols="1,2",options="header"]
+|===
+| Signal | Path
+
+| Traces
+| `/v1/traces`
+
+| Metrics
+| `/v1/metrics`
+
+| Logs
+| `/v1/logs`
+|===
+
+[IMPORTANT]
+====
+Spring Boot's OTLP exporter does **not** append `/v1/traces` automatically.
+The full endpoint must be specified:
+
+`http://jaegerv2-collector.foundation-cluster-monitoring:4318/v1/traces`
+
+Omitting `/v1/traces` results in a 404 from the collector and zero spans exported.
+====
+
+=== OTLP/gRPC vs OTLP/HTTP — When to Use Which
+
+[cols="1,2",options="header"]
+|===
+| Use gRPC (:4317) when | Use HTTP (:4318) when
+
+| The SDK natively supports gRPC (Go, C++, Rust)
+| The SDK or plugin uses HTTP (Java Spring Boot, Lua/APISIX)
+
+| You need streaming or bidirectional communication
+| You want simpler debugging (curl-able, proxy-friendly)
+
+| Lower overhead matters (binary protobuf, multiplexed)
+| Firewall/proxy only allows HTTP/1.1
+|===
+
+In Foundation:
+
+* **Zitadel → Jaeger** uses gRPC (4317) because the Go OTel SDK defaults to gRPC
+* **Spring Boot → Jaeger** uses HTTP (4318) because the Spring Boot OTLP exporter defaults to HTTP
+* **APISIX → Jaeger** uses HTTP (4318) because the Lua plugin only supports HTTP
+
+
+== W3C Trace Context
+
+=== The Standard
+
+W3C Trace Context is a **W3C Recommendation** (internet standard) that defines how trace
+context propagates between services over HTTP. It specifies two headers.
+
+=== `traceparent` Header
+
+The primary header — carries trace ID, parent span ID, and sampling decision.
+
+[source,text]
+----
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+             ──  ────────────────────────────────  ────────────────  ──
+             ver         traceID (32 hex)          parentSpanID      flags
+                          16 bytes                   8 bytes
+----
+
+[cols="1,1,3",options="header"]
+|===
+| Field | Value | Meaning
+
+| Version
+| `00`
+| Current spec version. Always `00`.
+
+| Trace ID
+| 32 hex chars
+| Unique ID for the entire request journey. Same at every hop.
+
+| Parent Span ID
+| 16 hex chars
+| Span ID of the caller. The receiver creates a child span under this parent.
+
+| Flags
+| `01` or `00`
+| `01` = sampled (record). `00` = not sampled (drop). Downstream services respect this.
+|===
+
+=== `tracestate` Header
+
+[source,text]
+----
+tracestate: congo=t61rcWkgMzE,rojo=00f067aa0ba902b7
+----
+
+Optional companion header. Carries vendor-specific key-value pairs.
+Each vendor uses its own key. The values are opaque — other vendors pass them through unchanged.
+
+Most deployments today only use `traceparent` and ignore `tracestate`.
+
+=== Who Supports W3C Trace Context
+
+* OpenTelemetry SDK (all languages) — **default propagator**
+* Spring Boot 3 / Micrometer Tracing — **default since Spring Boot 3.0**
+* APISIX `opentelemetry` plugin — **default**
+* Zitadel Go OTel SDK — **default**
+* Envoy / Istio sidecars — supported (configurable)
+
+Because all Foundation components default to W3C, no propagator configuration is needed —
+the `traceparent` written by APISIX is directly readable by every downstream service.
+
+
+== B3 Propagation (Zipkin / Legacy)
+
+=== What It Is
+
+B3 is the original trace context propagation format created by **Zipkin**.
+Before W3C Trace Context existed, B3 was the most widely used format.
+
+=== Header Format
+
+B3 uses **four separate headers** (multi-header format):
+
+[source,text]
+----
+X-B3-TraceId:      4bf92f3577b34da6a3ce929d0e0e4736
+X-B3-SpanId:       00f067aa0ba902b7
+X-B3-ParentSpanId: a2fb4a1d1a96d312
+X-B3-Sampled:      1
+----
+
+Or a **single-header** compact format:
+
+[source,text]
+----
+b3: 4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-1-a2fb4a1d1a96d312
+    traceID-spanID-sampled-parentSpanID
+----
+
+=== B3 vs W3C Comparison
+
+[cols="1,2,2",options="header"]
+|===
+| Aspect | B3 (Zipkin) | W3C Trace Context
+
+| Headers
+| 4 separate headers (or 1 compact)
+| 1 header (`traceparent`) + 1 optional (`tracestate`)
+
+| Trace ID
+| 16 or 32 hex chars (64 or 128 bit)
+| Always 32 hex chars (128 bit)
+
+| Sampling flag
+| `X-B3-Sampled: 1` or `0`
+| Last 2 chars of `traceparent`: `01` or `00`
+
+| Vendor metadata
+| Not supported
+| `tracestate` header
+
+| Status
+| Legacy — still supported by most tools
+| Current standard — default everywhere since ~2023
+|===
+
+=== When You Still See B3
+
+* Istio/Envoy sidecars can propagate both B3 and W3C simultaneously
+* Older Zipkin-instrumented services may only speak B3
+* Jaeger V1 agent accepted B3 format spans
+
+In Foundation, B3 is not used directly. If Istio mesh tracing is enabled,
+Envoy propagates both formats by default for backward compatibility.
+
+
+== Jaeger Legacy Format
+
+=== `uber-trace-id` Header
+
+Before adopting W3C, Jaeger had its own proprietary header:
+
+[source,text]
+----
+uber-trace-id: 4bf92f3577b34da6:00f067aa0ba902b7:a2fb4a1d1a96d312:1
+               traceID:spanID:parentSpanID:flags
+----
+
+Colon-separated. Same information as `traceparent` but different format.
+
+=== Status
+
+Deprecated since Jaeger V2. The Jaeger V2 collector does not create `uber-trace-id` headers.
+It still _accepts_ spans from clients using this format (backward compatibility) but
+all new instrumentation should use W3C `traceparent`.
+
+
+== AWS X-Ray Format (For Reference)
+
+AWS services use their own header:
+
+[source,text]
+----
+X-Amzn-Trace-Id: Root=1-67891233-abcdef012345678912345678;Parent=00f067aa0ba902b7;Sampled=1
+----
+
+Not used in Foundation. Mentioned here because it appears in AWS documentation and
+can cause confusion. The OTel SDK has an `xray` propagator for AWS environments.
+
+
+== Protocol Convergence — Why W3C Won
+
+Before 2020, the tracing ecosystem was fragmented:
+
+[source,text]
+----
+         ┌──────────┐
+Zipkin   │ B3 multi  │  4 headers, 64 or 128-bit trace ID
+         │ b3 single │
+         └──────────┘
+         ┌──────────┐
+Jaeger   │ uber-     │  colon-separated, proprietary
+         │ trace-id  │
+         └──────────┘
+         ┌──────────┐
+AWS      │ X-Amzn-   │  semicolon-separated, AWS-only
+         │ Trace-Id  │
+         └──────────┘
+         ┌──────────┐
+Datadog  │ x-datadog-│  numeric IDs, Datadog-only
+         │ trace-id  │
+         └──────────┘
+----
+
+A service instrumented with Zipkin could not participate in a trace started by Jaeger
+without translation middleware. Every tool had its own format.
+
+**W3C Trace Context solved this** by defining a single header format (`traceparent`)
+that all vendors agreed to support.
+
+Today (2026):
+
+* OpenTelemetry SDKs default to W3C in all languages
+* Jaeger V2 defaults to W3C
+* Spring Boot 3 defaults to W3C
+* APISIX defaults to W3C
+* Zipkin, Datadog, AWS all support W3C as an option
+
+The old formats still work for backward compatibility, but all new instrumentation
+should use `traceparent`.
+
+
+== Quick Reference — Protocol Comparison
+
+[cols="1,1,1,1,1",options="header"]
+|===
+| Protocol | Transport | Direction | Port | Used For
+
+| OTLP/HTTP
+| HTTP/1.1 + protobuf
+| App → Collector
+| 4318
+| Span export (Spring Boot, APISIX)
+
+| OTLP/gRPC
+| HTTP/2 + protobuf
+| App → Collector
+| 4317
+| Span export (Zitadel, collector→storage)
+
+| W3C `traceparent`
+| HTTP header
+| Service → Service
+| any
+| Context propagation (trace ID + parent span ID)
+
+| B3
+| HTTP headers
+| Service → Service
+| any
+| Legacy context propagation (Zipkin)
+
+| `uber-trace-id`
+| HTTP header
+| Service → Service
+| any
+| Deprecated Jaeger context propagation
+
+| Zipkin JSON
+| HTTP POST
+| App → Collector
+| 9411
+| Legacy span format (Jaeger V2 still accepts)
+|===
+
+[NOTE]
+====
+**Context propagation** headers (`traceparent`, B3, `uber-trace-id`) travel between
+services as part of the application HTTP request.
+
+**Span export** protocols (OTLP) are separate connections from the application to the
+collector — they carry the recorded span data, not the live request.
+
+These are two completely different network paths.
+====
+
+
+== File Index — All Parts
+
+[cols="1,3",options="header"]
+|===
+| File | Contents
+
+| xref:ex-tracing-part1-concepts-terms.adoc[Part 1]
+| Concepts: span, trace, root span, context propagation, sampling, instrumentation, JDBC spans, traceparent deep-dive
+
+| xref:ex-tracing-part2a-otel-jaeger.adoc[Part 2a]
+| Tools: OpenTelemetry ecosystem, Jaeger V2 architecture, Spring Boot auto-config
+
+| xref:ex-tracing-part2b-apisix-jdbc-kiali.adoc[Part 2b]
+| Tools: APISIX OTel plugin, datasource-micrometer JDBC proxy, Kiali, Zitadel OTel
+
+| xref:ex-tracing-part2c-protocols.adoc[Part 2c] (this file)
+| Protocols: OTLP HTTP/gRPC, W3C Trace Context, B3, uber-trace-id, AWS X-Ray, convergence
+|===

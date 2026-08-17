@@ -1,0 +1,56 @@
+= Maximum Depth of Binary Tree
+:description: Find the maximum depth (height) of a binary tree.
+:keywords: trees, binary-tree, depth, height, recursion, dfs
+
+== Difficulty
+
+Easy
+
+== Problem Statement
+
+Given the `root` of a binary tree, return its **maximum depth**.
+
+A binary tree's maximum depth is the number of nodes along the longest path from the root node down to the farthest leaf node.
+
+=== Constraints
+
+* The number of nodes in the tree is in the range `[0, 10^4]`.
+* `-100 \<= Node.val \<= 100`
+
+== Approach / Intuition
+
+// Explain your thought process, pattern used (DFS/BFS), and key observations here.
+
+== Diagram
+
+[source]
+----
+        3
+       / \
+      9   20
+         /  \
+        15   7
+
+Maximum Depth = 3
+----
+
+== Java Solution
+
+[source,java]
+----
+include::example$trees/MaxDepthOfBinaryTree.java[]
+----
+
+== Time & Space Complexity
+
+[cols="1,1"]
+|===
+| Time Complexity | `O(?)`
+| Space Complexity | `O(?)`
+|===
+
+== Reference Links
+
+* https://leetcode.com/problems/maximum-depth-of-binary-tree/[LeetCode]
+* _YouTube link here_
+* _Other references here_
