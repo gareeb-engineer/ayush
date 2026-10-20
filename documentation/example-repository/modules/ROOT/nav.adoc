@@ -1,0 +1,10 @@
+// Example for MANUAL navigation. Register this instead of nav-generated.adoc in antora.yml.
+* Java
+** xref:java:index.adoc[Garbage Collection]
+* Low-Level Design
+** xref:ROOT:lld/parking-lot.adoc[Parking Lot]
+* High-Level Design
+** xref:ROOT:hld/url-shortener.adoc[URL Shortener]
+* Contact & Résumé
+** xref:java:contact.adoc[Contact]
+** xref:java:resume.adoc[Résumé]

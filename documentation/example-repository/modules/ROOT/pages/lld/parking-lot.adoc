@@ -1,0 +1,35 @@
+= Parking Lot — Low-Level Design
+:page-navtitle: Parking Lot LLD
+:page-description: Extensible object model for a parking facility
+:sectnums:
+
+== Requirements
+
+* Different vehicle types and compatible parking spots.
+* Issue tickets on entry and free spots on exit.
+* Avoid assigning a spot more than once.
+
+== Candidate class design
+
+* `Vehicle`
+* `ParkingSpot`
+* `Ticket`
+* `ParkingLot`
+* `ParkingStrategy`
+
+== Java example
+
+[source,java]
+----
+public interface ParkingStrategy {
+    ParkingSpot findSpot(Vehicle vehicle);
+}
+----
+
+== Failure cases
+
+NOTE: Concurrent allocation must coordinate access to shared spot state.
+
+== Design trade-offs
+
+A simple in-memory model is easy to test, but coordinating multiple servers requires a shared authoritative state and failure handling.

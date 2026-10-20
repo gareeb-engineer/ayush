@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{{#if page.title}}{{{page.title}}} · {{/if}}{{site.title}}</title>
+  {{#if page.description}}<meta name="description" content="{{page.description}}">{{/if}}
+  <link rel="stylesheet" href="{{uiRootPath}}/css/site.css?v=7">
+</head>
+<body class="docs-page">
+  <a class="skip-link" href="#article-main">Skip to content</a>
+  <header class="docs-header">
+    <div class="docs-header-inner">
+      <a class="docs-logo" href="{{site.homeUrl}}"><span class="docs-logo-mark">AN</span><span>{{site.title}}</span></a>
+      {{!-- A single AsciiDoc page owns the site-wide header links.
+           Set site.keys.header_links_page to a fully qualified Antora page ID. --}}
+      {{#if site.keys.headerLinksPage}}
+        {{#with (resolvePage site.keys.headerLinksPage)}}
+          <nav class="header-adoc-nav docs-toplinks" aria-label="Header links" data-header-source-url="{{{relativize url}}}">
+            <div class="header-adoc-content">{{{contents}}}</div>
+          </nav>
+        {{else}}
+          {{#if site.keys.contactUrl}}<nav class="docs-toplinks" aria-label="Contact"><a class="docs-contact-link" href="{{{relativize site.keys.contactUrl}}}">Contact</a></nav>{{/if}}
+        {{/with}}
+      {{else}}
+        {{#if site.keys.contactUrl}}
+        <nav class="docs-toplinks" aria-label="Contact"><a class="docs-contact-link" href="{{{relativize site.keys.contactUrl}}}">Contact</a></nav>
+        {{/if}}
+      {{/if}}
+<button type="button" class="mobile-nav-toggle" aria-label="Toggle documentation navigation" aria-expanded="false" aria-controls="docs-sidebar">☰ Menu</button>
+    </div>
+  </header>
+  <div class="docs-shell">
+    <aside class="docs-sidebar" id="docs-sidebar" aria-label="Documentation sidebar">
+      <div class="sidebar-top"><span class="sidebar-eyebrow">ENGINEERING LIBRARY</span></div>
+      <input id="nav-filter" class="nav-filter" type="search" placeholder="Filter pages…" aria-label="Filter navigation" autocomplete="off">
+      {{#if page.navigation}}<nav aria-label="Documentation pages">{{> nav-tree items=page.navigation}}</nav>{{else}}<p class="empty-nav">No navigation registered. Add nav-generated.adoc to antora.yml.</p>{{/if}}
+    </aside>
+    <main id="article-main" class="docs-article">
+      {{!-- Antora marks site.start_page as page.home. Do not show Home / [same page] there. --}}
+      {{#unless page.home}}
+      {{#if page.breadcrumbs}}
+      <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="{{site.homeUrl}}">Home</a>{{#each page.breadcrumbs}}<span aria-hidden="true">/</span>{{#if url}}<a href="{{{relativize url}}}">{{{content}}}</a>{{else}}<span>{{{content}}}</span>{{/if}}{{/each}}</nav>
+      {{/if}}
+      {{/unless}}
+      <article class="article-body">
+        {{#if page.title}}<header class="article-header"><h1>{{{page.title}}}</h1>{{#if page.attributes.author}}<p class="article-byline">{{page.attributes.author}}</p>{{/if}}</header>{{/if}}
+        {{{page.contents}}}
+      </article>
+      <div class="article-pagination">
+        {{#if page.previous}}<a class="prev" href="{{{relativize page.previous.url}}}"><span>← Previous</span><strong>{{{page.previous.content}}}</strong></a>{{/if}}
+        {{#if page.next}}<a class="next" href="{{{relativize page.next.url}}}"><span>Next →</span><strong>{{{page.next.content}}}</strong></a>{{/if}}
+      </div>
+    </main>
+    <aside class="docs-toc" aria-label="On this page">
+      <div class="toc-heading">ON THIS PAGE</div>
+      {{#if page.attributes.toc}}<div class="toc-note">Use section headings to jump within this article.</div>{{/if}}
+      <nav id="js-local-toc"></nav>
+    </aside>
+  </div>
+  <footer class="docs-footer">© 2026 Ayush Nigam · Built with Antora · <a href="{{site.homeUrl}}">Home</a></footer>
+  <script src="{{uiRootPath}}/js/site.js?v=7" defer></script>
+</body>
+</html>

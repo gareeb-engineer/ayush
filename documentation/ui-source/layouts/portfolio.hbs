@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Ayush Nigam — Software Engineer. Java, Spring Boot, distributed systems and software architecture.">
+  <title>Ayush Nigam | Software Engineer{{#if site.title}} — {{site.title}}{{/if}}</title>
+  <link rel="stylesheet" href="{{uiRootPath}}/css/portfolio.css?v=7">
+</head>
+<body class="portfolio-page" data-portfolio-layout="v2">
+  <a class="skip" href="#main">Skip to main content</a>
+  <header class="masthead">
+    <div class="container navrow">
+      <a class="sitebrand" href="{{site.homeUrl}}" aria-label="Go to homepage"><span class="sitebrand-mark">AN</span> Ayush Nigam</a>
+      {{!-- A single AsciiDoc page owns the site-wide header links.
+           Set site.keys.header_links_page to a fully qualified Antora page ID. --}}
+      {{#if site.keys.headerLinksPage}}
+        {{#with (resolvePage site.keys.headerLinksPage)}}
+          <nav class="header-adoc-nav portfolio-toplinks" aria-label="Header links" data-header-source-url="{{{relativize url}}}">
+            <div class="header-adoc-content">{{{contents}}}</div>
+          </nav>
+        {{else}}
+          {{#if site.keys.contactUrl}}<nav class="portfolio-toplinks" aria-label="Contact"><a class="docs-contact-link" href="{{{relativize site.keys.contactUrl}}}">Contact</a></nav>{{/if}}
+        {{/with}}
+      {{else}}
+        {{#if site.keys.contactUrl}}
+        <nav class="portfolio-toplinks" aria-label="Contact"><a class="docs-contact-link" href="{{{relativize site.keys.contactUrl}}}">Contact</a></nav>
+        {{/if}}
+      {{/if}}
+
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="top" class="hero container">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="eyebrow-dot"></span> SOFTWARE ENGINEER · GE VERNOVA</p>
+        <h1>Ayush Nigam</h1>
+        <p class="hero-title">Java Backend &amp; Distributed Systems Engineer</p>
+        <p class="hero-lead">Software engineer working at the intersection of backend services and cloud-native infrastructure. I build, study, and document dependable software systems—from object models to distributed architectures.</p>
+        <div class="hero-actions">
+          <a class="button primary" href="#library">Explore articles <span aria-hidden="true">↗</span></a>
+          <a class="button secondary" href="#experience">Professional experience</a>
+        </div>
+        <div class="hero-facts" aria-label="Professional details">
+          <span><b>Core</b> Java · Spring Boot</span>
+          <span><b>Systems</b> Kafka · Redis · PostgreSQL</span>
+          <span><b>Platform</b> AWS · Kubernetes</span>
+        </div>
+      </div>
+      <aside class="profile" aria-label="Profile photo and current role">
+        <img src="{{uiRootPath}}/img/profile-photo.png" alt="Profile image placeholder — replace with your own professional headshot">
+        <div class="profile-caption"><strong>Software Engineer</strong><span>GE Vernova · India</span></div>
+      </aside>
+    </section>
+
+    <section class="bordered" id="work">
+      <div class="container section">
+        <div class="section-heading"><div><p class="eyebrow">SELECTED FOCUS AREAS</p><h2>Engineering Work</h2></div><p>Design notes, code, architecture choices, and practical explorations. Replace these category summaries with links to published projects.</p></div>
+        <div class="projects">
+          <a class="project" href="#library"><span class="project-number">01 / DESIGN &amp; IMPLEMENTATION</span><h3>Low-Level Design</h3><p>Java implementations exploring abstraction, SOLID principles, design patterns, thread safety, and maintainability.</p><div class="tags"><span>Java</span><span>OOP</span><span>Concurrency</span></div></a>
+          <a class="project" href="#library"><span class="project-number">02 / ARCHITECTURE &amp; TRADE-OFFS</span><h3>High-Level Design</h3><p>APIs, scale estimation, data modeling, messaging, reliability, and distributed-systems trade-offs.</p><div class="tags"><span>Architecture</span><span>Scalability</span><span>Reliability</span></div></a>
+          <a class="project" href="#library"><span class="project-number">03 / ENGINEERING DEEP DIVES</span><h3>Systems &amp; Infrastructure</h3><p>Practical technical studies across Kafka, Redis, PostgreSQL, Kubernetes, observability, and cloud-native engineering.</p><div class="tags"><span>Kafka</span><span>PostgreSQL</span><span>Kubernetes</span></div></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="library-section" id="library">
+      <div class="container section">
+        <p class="eyebrow">TECHNICAL WRITING &amp; SOLUTIONS</p>
+        <h2>Browse the Engineering Library</h2>
+        <p class="library-intro">Every article is written as an Antora AsciiDoc page and linked automatically through the navigation generator.</p>
+        {{#if page.navigation}}
+        <nav class="portfolio-library" aria-label="All published articles">
+          {{> nav-tree items=page.navigation}}
+        </nav>
+        {{else}}
+        <p class="library-intro">No articles in the navigation yet. Run tools/generate_nav.py and register the generated file in antora.yml.</p>
+        {{/if}}
+      </div>
+    </section>
+
+    <section class="container section bio" id="about">
+      <div><p class="eyebrow">ABOUT ME</p><h2>Thoughtful design.<br>Practical engineering.</h2></div>
+      <div class="bio-copy"><p>I am a software engineer with experience in application development, cloud infrastructure, and platform operations. My interests include Java backend engineering, distributed systems, and the design decisions that make software resilient and maintainable.</p><p>Here I publish structured LLD and HLD case studies focused on requirements, alternatives, working implementations, failure scenarios, and lessons learned.</p></div>
+    </section>
+
+    <section class="soft" id="experience">
+      <div class="container section">
+        <p class="eyebrow">CAREER</p><h2>Professional Experience</h2>
+        <div class="career"><div><span class="career-label">CURRENT ROLE</span></div><div><h3>Software Engineer <span>· GE Vernova</span></h3><p>Working across backend services, distributed infrastructure, cloud platforms, CI/CD and database operations. Add specific verified contributions and measurable results here.</p></div></div>
+      </div>
+    </section>
+
+    <section class="container section contact" id="contact">
+      <p class="eyebrow">LET'S CONNECT</p><h2>Explore the work. Discuss the engineering.</h2>
+      <p>Use the links below to explore projects and get in touch. Replace the placeholder URLs before publishing.</p>
+      <div class="contact-links"><a href="https://github.com/YOUR_USERNAME" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="https://www.linkedin.com/in/YOUR_USERNAME/" target="_blank" rel="noopener noreferrer">LinkedIn ↗</a></div>
+    </section>
+    {{#if page.contents}}<section class="container portfolio-extra">{{{page.contents}}}</section>{{/if}}
+  </main>
+  <footer><div class="container">© 2026 Ayush Nigam · Built with Antora</div></footer>
+  <script src="{{uiRootPath}}/js/site.js?v=7" defer></script>
+</body>
+</html>

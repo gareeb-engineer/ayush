@@ -10,7 +10,7 @@ content:
       start_path: ./gareeb-engineer/
 ui:
   bundle:
-    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip?job=bundle-stable
+    url: ./ui/engineering-portfolio-ui-sidebar-hierarchy-fixed.zip
     snapshot: true
 
 output:

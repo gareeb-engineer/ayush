@@ -1,0 +1,27 @@
+= URL Shortener — High-Level Design
+:page-navtitle: URL Shortener HLD
+:sectnums:
+
+== Functional requirements
+
+* Create shortened URLs.
+* Redirect short links to the destination.
+* Optionally track redirects.
+
+== Nonfunctional requirements
+
+* Low redirect latency.
+* Availability and controlled growth.
+* Unique short-link identifiers.
+
+== Architecture
+
+A write service stores mappings in a database. Redirect handlers consult cache and persistent storage. A queue may process analytics asynchronously.
+
+== Design choices
+
+Discuss key generation, cache expiry, database indexes, abuse prevention, and recovery after partial failure.
+
+== Trade-offs
+
+The optimal identifier strategy depends on required length, uniqueness, predictability and throughput.

@@ -1,0 +1,21 @@
+= Résumé
+:page-navtitle: Résumé
+:page-nav-exclude:
+
+== Summary
+
+Software engineer interested in Java backend development and distributed systems.
+
+== Experience
+
+Add verified employers, timelines, roles and measurable achievements here.
+
+== Technical skills
+
+* Java, Spring Boot
+* Distributed systems and messaging
+* Relational databases and cloud platforms
+
+== Selected projects
+
+See xref:ROOT:lld/parking-lot.adoc[Parking Lot LLD] and xref:ROOT:hld/url-shortener.adoc[URL Shortener HLD].

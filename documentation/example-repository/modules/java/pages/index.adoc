@@ -1,0 +1,28 @@
+= Java's Invisible Engine: Garbage Collection (GC)
+:page-navtitle: Garbage Collection
+:page-description: Java automatic memory management and garbage collection fundamentals
+:page-layout: default
+:sectnums:
+
+Welcome to the engineering library. This is the example site's configured landing page.
+
+== Evolution of Modern Memory Management
+
+Java manages memory automatically with a garbage collector. The details depend on the selected collector and workload.
+
+=== Generational Hypothesis
+
+Many Java collectors organize work around object lifetimes and allocation behavior.
+
+== Choices of GC
+
+* Serial GC
+* Parallel GC
+* G1 GC
+* ZGC
+
+== Explore more
+
+* xref:ROOT:lld/parking-lot.adoc[Parking Lot Low-Level Design]
+* xref:ROOT:hld/url-shortener.adoc[URL Shortener High-Level Design]
+* xref:contact.adoc[Contact]

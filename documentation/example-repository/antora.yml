@@ -1,0 +1,8 @@
+name: gareeb-engineer
+version: v1.0
+title: Engineering Library
+nav:
+  - modules/ROOT/nav-generated.adoc
+# Manual alternative:
+# nav:
+#   - modules/ROOT/nav.adoc

@@ -1,0 +1,15 @@
+= Contact
+:page-navtitle: Contact
+:page-nav-exclude:
+
+== Professional links
+
+* LinkedIn: https://www.linkedin.com/in/YOUR_PROFILE/[View my profile]
+* GitHub: https://github.com/YOUR_USERNAME[View my repositories]
+* Email: mailto:YOUR_EMAIL@example.com[Email me]
+
+== Areas of interest
+
+Java backend engineering, low-level design, distributed systems, and cloud-native architecture.
+
+NOTE: Replace all placeholders with real public contact links before deployment.

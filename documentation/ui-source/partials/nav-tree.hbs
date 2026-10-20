@@ -1,0 +1,27 @@
+{{!-- Antora navigation: buttons for expandable category nodes, real links for pages. --}}
+<ul class="nav-tree">
+{{#each items}}
+  <li class="nav-item{{#if items}} nav-parent{{/if}}">
+    {{#if items}}
+      {{#if url}}
+        <div class="nav-row"><a href="{{{relativize url}}}">{{{content}}}</a></div>
+        {{> nav-tree items=items}}
+      {{else}}
+        <div class="nav-group">
+          <button type="button" class="nav-row nav-toggle" aria-expanded="true">
+            <span class="nav-label">{{{content}}}</span>
+            <span class="nav-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="nav-children">
+            {{> nav-tree items=items}}
+          </div>
+        </div>
+      {{/if}}
+    {{else}}
+      <div class="nav-row">
+        {{#if url}}<a href="{{{relativize url}}}">{{{content}}}</a>{{else}}<span>{{{content}}}</span>{{/if}}
+      </div>
+    {{/if}}
+  </li>
+{{/each}}
+</ul>

@@ -1,0 +1,17 @@
+site:
+  title: Ayush Nigam | Engineering Portfolio
+  # For GitHub Pages, set url to your published base URL BEFORE deploying, e.g.:
+  # url: https://YOUR_USERNAME.github.io/YOUR_REPOSITORY
+  start_page: v1.0@gareeb-engineer:java:index.adoc
+  keys:
+    header_links_page: 'gareeb-engineer:java:header-links.adoc'
+content:
+  sources:
+    - url: .
+      branches: HEAD
+ui:
+  bundle:
+    url: ./ui/engineering-portfolio-ui-adoc-header.zip
+    snapshot: true
+output:
+  dir: ./build-output

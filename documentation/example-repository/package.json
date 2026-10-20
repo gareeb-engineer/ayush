@@ -1,0 +1,12 @@
+{
+  "name": "engineering-portfolio-antora-example",
+  "private": true,
+  "description": "Example Antora engineering portfolio and AsciiDoc-driven header",
+  "scripts": {
+    "build": "antora antora-playbook.yaml"
+  },
+  "devDependencies": {
+    "@antora/cli": "^3.1.0",
+    "@antora/site-generator": "^3.1.0"
+  }
+}
