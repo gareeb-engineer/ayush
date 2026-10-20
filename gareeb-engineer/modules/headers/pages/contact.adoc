@@ -1,0 +1,9 @@
+= Contact
+:page-navtitle: Contact
+:page-nav-exclude:
+
+== Professional links
+
+* LinkedIn: https://www.linkedin.com/in/YOUR_PROFILE/[View my profile]
+* GitHub: https://github.com/YOUR_USERNAME[View my repositories]
+* Email: mailto:YOUR_EMAIL@example.com[Email me]

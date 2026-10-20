@@ -1,0 +1,8 @@
+= Header Navigation
+:page-nav-exclude:
+:page-layout: fragment
+
+[.header-menu-links]
+* xref:headers:contact.adoc[Contact]
+* https://www.linkedin.com/in/YOUR_PROFILE/[LinkedIn]
+* https://github.com/YOUR_USERNAME[GitHub]

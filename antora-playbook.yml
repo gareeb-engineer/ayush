@@ -2,6 +2,8 @@ site:
   title: Ayush Nigam
   start_page: gareeb-engineer::index.adoc
   url: https://gareeb-engineer.github.io/ayush
+  keys:
+    header_links_page: 'gareeb-engineer:headers:header-links.adoc'
 
 content:
   sources:
@@ -10,7 +12,7 @@ content:
       start_path: ./gareeb-engineer/
 ui:
   bundle:
-    url: ./ui/engineering-portfolio-ui-sidebar-hierarchy-fixed.zip
+    url: ./ui/engineering-portfolio-ui-header-fragment-fix.zip
     snapshot: true
 
 output:
