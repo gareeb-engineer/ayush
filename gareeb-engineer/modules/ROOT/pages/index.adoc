@@ -1,7 +1,39 @@
-[.text-center]
 = Ayush Nigam
 
-[.text-center]
-**DevOps Engineer | Software Engineer | CI/CD | AWS | Kubernetes | Terraform | Linux **
+[.lead]
+**DevOps Engineer | Software Engineer | CI/CD | AWS | Kubernetes | Terraform | Linux**
+
+[.lead]
+Notes, references and study material on Java, data structures, architecture and platform engineering. Pick a topic below to get started.
 
 image::banner.png[Ayush Nigam's Banner]
+
+== Good starting point
+
+[.section-intro]
+Everything you need to browse the library quickly.
+
+[.card-grid]
+--
+[.card]
+[.card-icon]##☕##xref:Java:index.adoc[Garbage Collection] +
+How modern JVM garbage collectors manage and reclaim memory.
+
+[.card]
+[.card-icon]##🧩##xref:Data-Structure:index.adoc[Data Structure] +
+Arrays, linked lists, trees, graphs, recursion and more.
+
+[.card]
+[.card-icon]##🏗️##xref:Arcitecture-diagram:index.adoc[Architecture Diagrams] +
+Architecture diagrams and design references.
+
+[.card]
+[.card-icon]##📚##xref:DevOps-Refs:index.adoc[References] +
+Curated DevOps and interview preparation links.
+--
+
+== Need help?
+
+Have a question or want to work together? Reach out and I will get back to you.
+
+See: xref:headers:contact.adoc[Contact]

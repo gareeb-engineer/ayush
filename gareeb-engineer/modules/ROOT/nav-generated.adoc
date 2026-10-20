@@ -18,3 +18,5 @@
 ** xref:Data-Structure:trees/index.adoc[Index]
 ** xref:DevOps-Refs:index.adoc[References]
 ** xref:Java:index.adoc[☕ Java's Invisible Engine: Garbage Collection (GC) 🗑️]
+** xref:headers:contact.adoc[Contact]
+** xref:headers:header-links.adoc[Header Navigation]

@@ -4,6 +4,6 @@
 
 == Professional links
 
-* LinkedIn: https://www.linkedin.com/in/YOUR_PROFILE/[View my profile]
-* GitHub: https://github.com/YOUR_USERNAME[View my repositories]
-* Email: mailto:YOUR_EMAIL@example.com[Email me]
+* LinkedIn: https://www.linkedin.com/in/the-ayush-nigam/[ayushnigam0001]
+* GitHub: https://github.com/gareeb-engineer[ayushnigam0001]
+* Email: mailto:ayushnigam0002@gmail.com[Email me]

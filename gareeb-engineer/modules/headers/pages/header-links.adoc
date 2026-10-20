@@ -4,5 +4,5 @@
 
 [.header-menu-links]
 * xref:headers:contact.adoc[Contact]
-* https://www.linkedin.com/in/YOUR_PROFILE/[LinkedIn]
-* https://github.com/YOUR_USERNAME[GitHub]
+* https://www.linkedin.com/in/the-ayush-nigam/[LinkedIn]
+* https://github.com/gareeb-engineer[GitHub]
