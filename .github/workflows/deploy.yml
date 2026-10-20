@@ -21,12 +21,24 @@ jobs:
         with:
           node-version: '18'
 
-      # Step 3: Install Antora CLI and site generator
+      # Step 3: Setup Python (required to generate nav)
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Step 4: Generate the Antora sidebar navigation
+      - name: Generate nav
+        run: |
+          python tools/generate_nav.py --content-root .
+        working-directory: gareeb-engineer
+
+      # Step 5: Install Antora CLI and site generator
       - name: Install Antora
         run: |
           npm install -g @antora/cli @antora/site-generator-default
 
-      # Step 4: Build the Antora site
+      # Step 6: Build the Antora site
       - name: Build Antora site
         run: |
            antora --generator @antora/site-generator-default antora-playbook.yml
