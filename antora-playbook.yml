@@ -15,5 +15,10 @@ ui:
     url: ./ui/engineering-portfolio-ui-header-fragment-fix.zip
     snapshot: true
 
+asciidoc:
+  extensions:
+    # Enables [source,java,highlight=10] line highlighting in code blocks.
+    - ./lib/code-line-highlight.js
+
 output:
   dir: ./build-output
