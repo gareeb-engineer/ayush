@@ -1,0 +1,5 @@
+// Navigation for the java module only. Every xref here targets a page in modules/java/pages/.
+// Registered in antora.yml; other modules keep their own nav.adoc.
+.Java
+* xref:index.adoc[]
+* xref:resume.adoc[]

@@ -1,6 +1,5 @@
 = Contact
 :page-navtitle: Contact
-:page-nav-exclude:
 
 == Professional links
 

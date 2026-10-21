@@ -1,8 +1,10 @@
 name: gareeb-engineer
 version: v1.0
 title: Engineering Library
+# Each module owns its navigation. List every module's nav.adoc here, in the order
+# the groups should appear in the sidebar. A module's nav.adoc should only link to
+# that module's own pages, so modules stay independent of each other.
+# The headers module has no nav.adoc: its pages are reached from the top-right header.
 nav:
-  - modules/ROOT/nav-generated.adoc
-# Manual alternative:
-# nav:
-#   - modules/ROOT/nav.adoc
+  - modules/java/nav.adoc
+  - modules/ROOT/nav.adoc

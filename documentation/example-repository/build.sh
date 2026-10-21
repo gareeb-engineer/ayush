@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-python3 tools/generate_nav.py --content-root .
 npx antora antora-playbook.yaml
-echo 'Site built in build-output. Preview: python3 -m http.server 8000 --directory build-output'
+echo
+echo 'Site built in build-output.'
+echo 'Preview over HTTP (required for single-page navigation):'
+echo '  python3 -m http.server 8000 --directory build-output'
+echo 'Then open http://localhost:8000/'

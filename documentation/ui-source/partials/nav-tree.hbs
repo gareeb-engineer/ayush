@@ -4,8 +4,16 @@
   <li class="nav-item{{#if items}} nav-parent{{/if}}">
     {{#if items}}
       {{#if url}}
-        <div class="nav-row"><a href="{{{relativize url}}}">{{{content}}}</a></div>
-        {{> nav-tree items=items}}
+        {{!-- An article with children is a link AND an independently collapsible group. --}}
+        <div class="nav-group nav-linked-group">
+          <div class="nav-row nav-linked-row">
+            <a href="{{{relativize url}}}">{{{content}}}</a>
+            <button type="button" class="nav-toggle nav-linked-toggle" aria-expanded="true" aria-label="Toggle subtopics">
+              <span class="nav-chevron" aria-hidden="true">▾</span>
+            </button>
+          </div>
+          <div class="nav-children">{{> nav-tree items=items}}</div>
+        </div>
       {{else}}
         <div class="nav-group">
           <button type="button" class="nav-row nav-toggle" aria-expanded="true">

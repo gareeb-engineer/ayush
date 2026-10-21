@@ -3,10 +3,11 @@
   "private": true,
   "description": "Example Antora engineering portfolio and AsciiDoc-driven header",
   "scripts": {
-    "build": "antora antora-playbook.yaml"
+    "build": "antora antora-playbook.yaml",
+    "serve": "python -m http.server 8000 --directory build-output"
   },
   "devDependencies": {
-    "@antora/cli": "^3.1.0",
-    "@antora/site-generator": "^3.1.0"
+    "@antora/cli": "3.1.10",
+    "@antora/site-generator": "3.1.10"
   }
 }

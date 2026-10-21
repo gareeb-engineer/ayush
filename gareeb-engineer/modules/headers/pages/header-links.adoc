@@ -1,5 +1,4 @@
 = Header Navigation
-:page-nav-exclude:
 :page-layout: fragment
 
 [.header-menu-links]

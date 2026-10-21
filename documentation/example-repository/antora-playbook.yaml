@@ -4,14 +4,23 @@ site:
   # url: https://YOUR_USERNAME.github.io/YOUR_REPOSITORY
   start_page: v1.0@gareeb-engineer:java:index.adoc
   keys:
-    header_links_page: 'gareeb-engineer:java:header-links.adoc'
+    # Page whose AsciiDoc list becomes the top-right header links.
+    header_links_page: 'gareeb-engineer:headers:header-links.adoc'
+
 content:
   sources:
     - url: .
       branches: HEAD
+
+asciidoc:
+  extensions:
+    # Enables [source,java,highlight=10..12] line highlighting in code blocks.
+    - ./lib/code-line-highlight.js
+
 ui:
   bundle:
-    url: ./ui/engineering-portfolio-ui-adoc-header.zip
+    url: ./ui/engineering-portfolio-ui-header-fragment-fix.zip
     snapshot: true
+
 output:
   dir: ./build-output

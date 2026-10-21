@@ -171,3 +171,280 @@
   .portfolio-page .header-adoc-nav { width: 100%; }
   .portfolio-page .header-adoc-content .ulist > ul { justify-content: flex-start; gap: 3px 16px; }
 }
+
+/* v8: nested article headings are links, with a separate compact expand control. */
+.docs-page .docs-sidebar .nav-linked-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; min-height: 28px;
+}
+.docs-page .docs-sidebar .nav-linked-row > a {
+  flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere;
+}
+.docs-page .docs-sidebar .nav-linked-row > button.nav-linked-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 24px; width: 24px; min-height: 25px;
+  border: 0; border-radius: 4px; background: transparent;
+  color: #60758c; cursor: pointer; padding: 0;
+}
+.docs-page .docs-sidebar .nav-linked-row > button.nav-linked-toggle:hover { background: #eaf0f6; }
+.docs-page .docs-sidebar .nav-linked-row > button.nav-linked-toggle .nav-chevron { font-size: 12px; }
+.docs-page .docs-sidebar .nav-linked-group > .nav-children > .nav-tree { margin-block: 1px 3px; }
+
+/* v9: small rounded-square profile avatar at the right end of the header. */
+.docs-page .header-avatar { display: inline-flex; flex: 0 0 auto; width: 36px; height: 36px; margin-left: 18px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: #203d5a; }
+.docs-page .header-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+.docs-page .header-avatar:focus-visible { outline: 2px solid #6e9bc8; outline-offset: 2px; }
+@media (max-width: 750px) {
+  .docs-page .header-avatar { margin-left: auto; }
+  .docs-page .header-avatar + .mobile-nav-toggle { margin-left: 0; }
+}
+
+/* v10: landing-page cards (used by ROOT/pages/index.adoc via [.card-grid] / [.card]). */
+.article-body .paragraph.lead p { font-size: 16px; line-height: 1.7; color: var(--muted); margin: 0 0 14px; }
+.article-body .paragraph.lead:first-of-type p { color: var(--ink); font-size: 15px; }
+.article-body .paragraph.section-intro p { color: var(--muted); font-size: 14px; margin: -4px 0 20px; }
+.article-body .card-grid > .content { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+.article-body .card-grid .paragraph.card { position: relative; margin: 0; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 18px 18px 16px; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.article-body .card-grid .paragraph.card:hover { border-color: #b7c6d6; box-shadow: 0 4px 14px rgba(24, 40, 60, .08); transform: translateY(-1px); }
+.article-body .card-grid .paragraph.card p { margin: 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.article-body .card-grid .paragraph.card br { display: none; }
+.article-body .card-grid .card-icon { display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 14px; font-size: 18px; line-height: 1; border: 1px solid var(--line); border-radius: 8px; background: var(--soft); }
+.article-body .card-grid .paragraph.card a { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 650; color: var(--ink); text-decoration: none; }
+.article-body .card-grid .paragraph.card a::after { content: ""; position: absolute; inset: 0; border-radius: 10px; }
+.article-body .card-grid .paragraph.card a:focus-visible { outline: none; }
+.article-body .card-grid .paragraph.card a:focus-visible::after { outline: 2px solid #6e9bc8; outline-offset: 2px; }
+
+/* v11: opt-in centered page heading via :page-centered: true */
+.article-header.article-header--centered { text-align: center; }
+
+/* v12: bundled Inter (SIL OFL) so every visitor sees the same typography */
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("../fonts/inter-latin-wght-normal.woff2") format("woff2"); }
+/* v12: refined centered page title */
+.article-header.article-header--centered { border-bottom: 0; padding: 14px 0 6px; margin-bottom: 22px; }
+.article-header.article-header--centered h1 { font-size: clamp(32px, 5vw, 50px); font-weight: 780; letter-spacing: -.04em; line-height: 1.12; color: var(--ink); }
+.article-header.article-header--centered::after { content: ""; display: block; width: 56px; height: 3px; margin: 18px auto 0; border-radius: 3px; background: var(--blue); }
+
+/* v13: keep the whole sidebar (label + filter + links) and the whole TOC fixed while the article scrolls.
+   The aside keeps stretching so its background and border run the full page height;
+   only the inner block is sticky. Long nav lists scroll inside the panel, the filter stays put. */
+.docs-page .docs-sidebar { padding-top: 0; padding-bottom: 0; }
+.docs-page .docs-sidebar .sidebar-inner {
+  position: sticky; top: 70px;
+  display: flex; flex-direction: column;
+  max-height: calc(100vh - 70px);
+  padding: 32px 0 24px;
+}
+.docs-page .docs-sidebar .sidebar-inner > nav {
+  position: static; top: auto;
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  margin-inline: -4px; padding-inline: 4px;
+}
+.docs-page .docs-toc { padding-top: 0; padding-bottom: 0; }
+.docs-page .docs-toc .toc-inner {
+  position: sticky; top: 70px;
+  max-height: calc(100vh - 70px);
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: 36px 0 24px;
+}
+.docs-page .docs-toc .toc-inner > nav { position: static; top: auto; }
+@media (max-width: 750px) {
+  .docs-page .docs-sidebar { padding: 16px 18px; }
+  .docs-page .docs-sidebar .sidebar-inner { position: static; max-height: none; padding: 0; }
+  .docs-page .docs-sidebar .sidebar-inner > nav { overflow: visible; }
+}
+/* v14: mobile support. Laptop/desktop is unchanged: everything below either targets elements that only
+   exist for phones (drawer links, backdrop) or sits inside a media query that a mouse/trackpad screen
+   wider than 750px never matches. Keep the phone query identical to phoneMQ in js/site.js. */
+.docs-page .drawer-links, .docs-page .nav-backdrop { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .docs-page .docs-sidebar, .docs-page .nav-backdrop { transition: none !important; }
+}
+
+/* Phone layout: narrow screens, or touch phones held sideways. */
+@media (max-width: 750px), (hover: none) and (pointer: coarse) and (max-height: 500px) {
+  /* One-row header; Contact/LinkedIn/GitHub move into the drawer. */
+  .docs-page .docs-header-inner { flex-wrap: nowrap; height: 60px; min-height: 0; padding: 0 16px; gap: 10px; }
+  .docs-page .docs-header .docs-toplinks { display: none; }
+  .docs-page .docs-logo { min-height: 44px; font-size: 13px; }
+  .docs-page .header-avatar { margin-left: auto; }
+  .docs-page .mobile-nav-toggle {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    min-width: 44px; min-height: 44px; margin-left: 0; padding: 0 14px; border-radius: 8px;
+    font: 650 14px/1 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  }
+  .docs-page .docs-shell { display: block; }
+
+  /* Slide-in drawer, placed just below the header (JS sets --drawer-top). */
+  .docs-page .docs-sidebar {
+    display: block; position: fixed; z-index: 60; top: var(--drawer-top, 60px); bottom: 0; left: 0;
+    width: min(320px, 86vw); margin: 0; padding: 0;
+    background: var(--soft); border-right: 1px solid var(--line); border-bottom: 0;
+    overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    transform: translateX(-105%); visibility: hidden;
+    transition: transform .22s ease, visibility 0s linear .22s;
+  }
+  .docs-page .docs-sidebar.open {
+    transform: none; visibility: visible; transition: transform .22s ease;
+    box-shadow: 0 12px 32px rgba(15, 27, 42, .2);
+  }
+  .docs-page .docs-sidebar:focus { outline: none; }
+  .docs-page .docs-sidebar .sidebar-inner { display: block; position: static; max-height: none; padding: 16px 16px 32px; }
+  .docs-page .docs-sidebar .sidebar-inner > nav { overflow: visible; margin-inline: 0; padding-inline: 0; }
+  .docs-page .nav-backdrop {
+    display: block; position: fixed; left: 0; right: 0; bottom: 0; top: var(--drawer-top, 60px); z-index: 55;
+    background: rgba(15, 27, 42, .45); opacity: 0; visibility: hidden;
+    transition: opacity .2s ease, visibility 0s linear .2s;
+  }
+  .docs-page .nav-backdrop.is-visible { opacity: 1; visibility: visible; transition: opacity .2s ease; }
+  /* Lock page scroll on <html> only: overflow on <body> would make it a scroll box and unstick the header. */
+  html.nav-open { overflow: hidden; }
+
+  /* Header links inside the drawer. */
+  .docs-page .drawer-links { display: block; margin: 0 0 16px; padding: 0 0 16px; border-bottom: 1px solid var(--line); }
+  .docs-page .drawer-links ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .docs-page .drawer-links a {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px;
+    border: 1px solid #d4dde7; border-radius: 8px; background: #fff;
+    color: #254762; font-size: 14px; font-weight: 650; text-decoration: none;
+  }
+
+  /* Slightly larger navigation text for reading on a phone. */
+  .docs-page .docs-sidebar .nav-row, .docs-page .docs-sidebar .nav-row > a { font-size: 14px; }
+  .docs-page .docs-sidebar .nav-group > button.nav-toggle > span.nav-label { font-size: 14px !important; }
+
+  /* Home page: centre the tagline under the centred heading. */
+  .docs-page .article-header--centered + #preamble .paragraph.lead p { text-align: center; }
+
+  /* Diagrams that were shrunk to fit can be opened full size (JS adds the link). */
+  .docs-page .article-body a.img-zoom { display: block; text-decoration: none; cursor: zoom-in; }
+  .docs-page .article-body .img-zoom-hint { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); text-align: center; }
+}
+
+/* Finger-sized tap targets (44px) on phones and touch tablets. Not on laptops (they have a mouse/trackpad). */
+@media (max-width: 750px), (hover: none) and (pointer: coarse) {
+  .docs-page .nav-filter { font-size: 16px; min-height: 44px; } /* 16px also stops iPhone Safari zooming in */
+  .docs-page .docs-sidebar .nav-row { padding-top: 0; padding-bottom: 0; }
+  .docs-page .docs-sidebar .nav-row > a { display: flex; align-items: center; min-height: 44px; }
+  .docs-page .docs-sidebar .nav-group > button.nav-toggle { min-height: 44px; }
+  .docs-page .docs-sidebar .nav-linked-row { min-height: 44px; }
+  .docs-page .docs-sidebar .nav-linked-row > button.nav-linked-toggle { flex: 0 0 44px; width: 44px; min-height: 44px; }
+  .docs-page .header-adoc-content a { min-height: 44px; }
+  .docs-page .docs-logo { min-height: 44px; }
+  .docs-page .breadcrumbs { row-gap: 0; margin-bottom: 14px; }
+  .docs-page .breadcrumbs a { display: inline-flex; align-items: center; min-height: 44px; }
+  .docs-page .article-pagination a { min-height: 44px; }
+  .docs-page .docs-footer { padding-block: 6px; }
+  .docs-page .docs-footer a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; }
+}
+/* v16: dark code blocks, toned down from near-black to a soft slate navy so it sits
+   more comfortably on the white page. Same family as the site's own --ink (#18283c).
+   site.js wraps each listing block's .content as .code-card and adds the toolbar,
+   line numbers (data-line), highlighted lines (.is-highlighted) and colours. */
+.article-body pre {
+  background: #1c2531; color: #e6edf3; border: 1px solid #323f4f; border-radius: 12px;
+  font-family: "JetBrains Mono", "Cascadia Code", "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  tab-size: 4;
+}
+.article-body .listingblock pre { border-color: #323f4f; }
+.article-body .code-card {
+  margin: 19px 0 26px; background: #1c2531; border: 1px solid #323f4f; border-radius: 12px;
+  overflow: hidden; box-shadow: 0 12px 26px -14px rgba(18, 28, 40, .4);
+}
+.article-body .listingblock > .title + .code-card { margin-top: 0; }
+.article-body .code-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px 10px 14px; background: #242f3e; border-bottom: 1px solid #323f4f;
+}
+.article-body .code-lang {
+  display: inline-flex; align-items: center; height: 30px; padding: 0 12px;
+  border: 1px solid #3c4a5c; border-radius: 7px; background: #2d3a4a; color: #e6edf3;
+  font: 600 12.5px/1 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; letter-spacing: .01em;
+}
+.article-body .code-actions { display: flex; align-items: center; gap: 8px; }
+.article-body .code-btn {
+  display: inline-flex; align-items: center; gap: 7px; height: 32px; margin: 0; padding: 0 13px;
+  border: 1px solid #3c4a5c; border-radius: 8px; background: transparent; color: #c9d1d9;
+  font: 500 12.5px/1 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  cursor: pointer; transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.article-body .code-btn:hover { background: #2d3a4a; border-color: #4c5c70; color: #fff; }
+.article-body .code-btn:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
+.article-body .code-btn svg { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.article-body .code-btn.is-copied { color: #3fb950; border-color: rgba(63, 185, 80, .55); }
+.article-body .code-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.article-body .code-card > pre {
+  margin: 0; padding: 14px 0 16px; border: 0; border-radius: 0; background: transparent;
+  font-size: 13.5px; line-height: 1.75; overflow-x: auto; white-space: pre;
+}
+.article-body .code-card > pre > code { display: inline-block; min-width: 100%; padding: 0; font: inherit; color: #e6edf3; background: none; }
+.article-body .code-card .code-line { display: block; padding: 0 22px 0 20px; }
+.article-body .code-card .code-line.is-highlighted { background: rgba(46, 160, 67, .16); }
+.article-body .code-card > pre:not(.code-numbered) .code-line.is-highlighted { box-shadow: inset 3px 0 0 #3fb950; }
+.article-body .code-card > pre.code-numbered .code-line { padding-left: 0; }
+.article-body .code-card > pre.code-numbered .code-line::before {
+  content: attr(data-line); content: attr(data-line) / "";
+  position: sticky; left: 0; z-index: 1; display: inline-block; box-sizing: border-box;
+  width: calc(var(--ln-digits, 2) * 1ch + 36px); margin-right: 18px; padding: 0 14px 0 16px;
+  text-align: right; color: #8392a5; background: #1c2531; border-right: 1px solid #323f4f;
+  -webkit-user-select: none; user-select: none;
+}
+.article-body .code-card > pre.code-numbered .code-line.is-highlighted::before { color: #e6edf3; border-right: 3px solid #3fb950; }
+/* Syntax colours (highlight.js classes). */
+.article-body .code-card .hljs-keyword, .article-body .code-card .hljs-selector-tag, .article-body .code-card .hljs-doctag,
+.article-body .code-card .hljs-template-tag, .article-body .code-card code.language-java .hljs-built_in { color: #c792ea; }
+.article-body .code-card .hljs-title, .article-body .code-card .hljs-title.class_, .article-body .code-card .hljs-title.function_,
+.article-body .code-card .hljs-section, .article-body .code-card .hljs-selector-id, .article-body .code-card .hljs-selector-class { color: #e5c07b; }
+.article-body .code-card .hljs-type, .article-body .code-card .hljs-built_in, .article-body .code-card .hljs-title.class_.inherited__ { color: #56c8d8; }
+.article-body .code-card .hljs-string, .article-body .code-card .hljs-regexp, .article-body .code-card .hljs-char.escape_ { color: #f2a65a; }
+.article-body .code-card .hljs-number, .article-body .code-card .hljs-literal, .article-body .code-card .hljs-symbol,
+.article-body .code-card .hljs-bullet, .article-body .code-card .hljs-selector-attr, .article-body .code-card .hljs-selector-pseudo { color: #79c0ff; }
+.article-body .code-card .hljs-comment, .article-body .code-card .hljs-quote { color: #7d8590; font-style: italic; }
+.article-body .code-card .hljs-meta { color: #f97583; }
+.article-body .code-card .hljs-meta .hljs-keyword { color: #c792ea; }
+.article-body .code-card .hljs-meta .hljs-string { color: #f2a65a; }
+.article-body .code-card .hljs-attr, .article-body .code-card .hljs-attribute, .article-body .code-card .hljs-property, .article-body .code-card .hljs-name { color: #7ee787; }
+.article-body .code-card .hljs-tag { color: #8b949e; }
+.article-body .code-card .hljs-tag .hljs-attr { color: #79c0ff; }
+.article-body .code-card .hljs-variable, .article-body .code-card .hljs-template-variable, .article-body .code-card .hljs-params,
+.article-body .code-card .hljs-subst, .article-body .code-card .hljs-operator, .article-body .code-card .hljs-punctuation { color: #e6edf3; }
+.article-body .code-card .hljs-addition { color: #7ee787; background: rgba(46, 160, 67, .15); }
+.article-body .code-card .hljs-deletion { color: #ffa198; background: rgba(248, 81, 73, .15); }
+.article-body .code-card .hljs-emphasis { font-style: italic; }
+.article-body .code-card .hljs-strong { font-weight: 700; }
+.article-body .code-card .hljs-link { text-decoration: underline; }
+/* Callout markers (<1>, <2>) in code and in the explanation list under it. */
+.article-body i.conum[data-value] {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  border-radius: 50%; background: #2f81f7; color: #fff; font: 700 11px/1 Inter, -apple-system, "Segoe UI", Arial, sans-serif;
+  font-style: normal; vertical-align: 1px;
+}
+.article-body i.conum[data-value]::after { content: attr(data-value); }
+.article-body i.conum[data-value] + b { display: none; }
+@media (max-width: 750px) {
+  .article-body .code-card { border-radius: 10px; }
+  .article-body .code-toolbar { padding: 8px 10px; }
+  .article-body .code-card > pre { font-size: 12.5px; }
+  .article-body .code-card .code-line { padding-right: 16px; }
+  .article-body .code-card > pre:not(.code-numbered) .code-line { padding-left: 14px; }
+}
+/* Touch screens: 44px tap targets for the toolbar buttons. */
+@media (hover: none) and (pointer: coarse) {
+  .article-body .code-btn { height: 44px; padding: 0 15px; }
+  .article-body .code-lang { height: 34px; }
+}
+/* v18: single-page navigation helpers (created by site.js).
+   Top progress bar, same idea as YouTube/GitHub: a thin line that fills in from the left
+   while the next page is loading, then races to 100% and fades out once it's ready. */
+.spa-announcer { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.spa-progress {
+  position: fixed; top: 0; left: 0; z-index: 200; height: 3px; pointer-events: none;
+  width: 100%; transform: scaleX(0); transform-origin: 0 50%; opacity: 0;
+  background: linear-gradient(90deg, var(--blue), #4f8fcf);
+  box-shadow: 0 0 8px rgba(33, 72, 110, .55);
+  transition: transform .22s ease-out, opacity .25s ease .05s;
+}
+.spa-progress.is-visible { opacity: 1; transition: transform .22s ease-out, opacity .15s ease; }
+.spa-progress.is-done { transition: transform .32s ease-out, opacity .4s ease .18s; }
+@media (prefers-reduced-motion: reduce) { .spa-progress { transition: opacity .2s ease; } }
+#article-main [data-spa-focus]:focus, #article-main[data-spa-focus]:focus { outline: none; }

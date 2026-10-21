@@ -21,8 +21,57 @@ Many Java collectors organize work around object lifetimes and allocation behavi
 * G1 GC
 * ZGC
 
+== Code block features
+
+A plain source block gets the dark theme, a language label, Copy and Open buttons,
+line numbers and syntax colours automatically:
+
+[source,java]
+----
+public final class Allocation {
+
+    private final String region;
+
+    public Allocation(String region) {
+        this.region = region;
+    }
+
+    public String describe() {
+        return String.format("allocated in %s", region);
+    }
+}
+----
+
+Add `highlight=` to draw attention to specific lines. Quote the value when it
+contains a comma:
+
+[source,java,highlight="3,7..9"]
+----
+public final class Eden {
+
+    private int surviving;          // highlighted
+
+    void collect(int[] objects) {
+        for (int age : objects) {
+            if (age > TENURING_THRESHOLD) {   // highlighted
+                surviving++;                  // highlighted
+            }                                 // highlighted
+        }
+    }
+}
+----
+
+Use `role=no-linenums` when line numbers add noise:
+
+[source,bash,role=no-linenums]
+----
+java -XX:+UseG1GC -Xms512m -Xmx512m -jar app.jar
+----
+
+See xref:ROOT:code-blocks.adoc[the code block reference] for every option.
+
 == Explore more
 
 * xref:ROOT:lld/parking-lot.adoc[Parking Lot Low-Level Design]
 * xref:ROOT:hld/url-shortener.adoc[URL Shortener High-Level Design]
-* xref:contact.adoc[Contact]
+* xref:headers:contact.adoc[Contact]

@@ -1,8 +1,7 @@
 = Header Navigation
-:page-nav-exclude:
+:page-layout: fragment
 
 [.header-menu-links]
-* xref:contact.adoc[Contact]
+* xref:headers:contact.adoc[Contact]
 * https://www.linkedin.com/in/YOUR_PROFILE/[LinkedIn]
 * https://github.com/YOUR_USERNAME[GitHub]
-* xref:resume.adoc[Résumé]

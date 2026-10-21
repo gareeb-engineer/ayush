@@ -1,6 +1,5 @@
 = Résumé
 :page-navtitle: Résumé
-:page-nav-exclude:
 
 == Summary
 

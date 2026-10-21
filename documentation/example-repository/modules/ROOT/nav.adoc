@@ -1,10 +1,9 @@
-// Example for MANUAL navigation. Register this instead of nav-generated.adoc in antora.yml.
-* Java
-** xref:java:index.adoc[Garbage Collection]
+// Navigation for the ROOT module only. Every xref here targets a page in modules/ROOT/pages/.
+// Registered in antora.yml; other modules keep their own nav.adoc.
+.Engineering Library
 * Low-Level Design
-** xref:ROOT:lld/parking-lot.adoc[Parking Lot]
+** xref:lld/parking-lot.adoc[]
 * High-Level Design
-** xref:ROOT:hld/url-shortener.adoc[URL Shortener]
-* Contact & Résumé
-** xref:java:contact.adoc[Contact]
-** xref:java:resume.adoc[Résumé]
+** xref:hld/url-shortener.adoc[]
+* Reference
+** xref:code-blocks.adoc[]

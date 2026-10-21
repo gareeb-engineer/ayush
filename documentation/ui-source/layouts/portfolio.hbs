@@ -12,7 +12,7 @@
   <a class="skip" href="#main">Skip to main content</a>
   <header class="masthead">
     <div class="container navrow">
-      <a class="sitebrand" href="{{site.homeUrl}}" aria-label="Go to homepage"><span class="sitebrand-mark">AN</span> Ayush Nigam</a>
+      <a class="sitebrand" href="{{{relativize site.homeUrl}}}" aria-label="Go to homepage"><span class="sitebrand-mark">AN</span> Ayush Nigam</a>
       {{!-- A single AsciiDoc page owns the site-wide header links.
            Set site.keys.header_links_page to a fully qualified Antora page ID. --}}
       {{#if site.keys.headerLinksPage}}
@@ -100,7 +100,7 @@
     </section>
     {{#if page.contents}}<section class="container portfolio-extra">{{{page.contents}}}</section>{{/if}}
   </main>
-  <footer><div class="container">© 2026 Ayush Nigam · Built with Antora</div></footer>
-  <script src="{{uiRootPath}}/js/site.js?v=7" defer></script>
+  <footer><div class="container">© 2026 Ayush Nigam</div></footer>
+  <script src="{{uiRootPath}}/js/site.js?v=13" defer></script>
 </body>
 </html>

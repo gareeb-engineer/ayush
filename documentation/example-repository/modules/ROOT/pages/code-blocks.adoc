@@ -1,0 +1,139 @@
+= Code Blocks — Every Option
+:page-navtitle: Code Blocks
+:page-description: Dark code blocks, line numbers, line highlighting, callouts and copy support
+
+Every `[source,...]` block is rendered as a dark card with a language label,
+Copy and Open buttons, line numbers and syntax colours. You write plain,
+standard AsciiDoc; nothing in this page is specific to the custom UI except the
+`highlight` and `no-linenums` options described below.
+
+== Plain source block
+
+[source,java]
+----
+record Point(int x, int y) {
+    Point translate(int dx, int dy) {
+        return new Point(x + dx, y + dy);
+    }
+}
+----
+
+== Highlight one line
+
+[source,java,highlight=2]
+----
+int total = 0;
+total += weight * quantity;   // this line is highlighted
+return total;
+----
+
+== Highlight several lines and ranges
+
+Quote the attribute value whenever it contains a comma, otherwise AsciiDoc
+treats the comma as an attribute separator.
+
+[source,java,highlight="1,4..6"]
+----
+var cache = new ConcurrentHashMap<String, byte[]>();
+var lock = new ReentrantLock();
+
+byte[] load(String key) {
+    return cache.computeIfAbsent(key, this::read);
+}
+----
+
+Semicolons work too, and an open-ended range runs to the last line:
+
+[source,yaml,highlight=2;5..]
+----
+server:
+  port: 8080
+logging:
+  level:
+    root: INFO
+    com.example: DEBUG
+----
+
+Exclude a line from a range with `!`:
+
+[source,java,highlight="1..5,!3"]
+----
+first();
+second();
+third();     // not highlighted
+fourth();
+fifth();
+----
+
+== Turn line numbers off
+
+[source,bash,role=no-linenums]
+----
+./gradlew clean build
+----
+
+Single-line blocks never get line numbers, so this option only matters for
+blocks of two lines or more.
+
+== Callouts
+
+Standard Asciidoctor callouts survive the custom rendering and stay aligned
+with their line. They are also stripped from the text that the Copy button
+puts on the clipboard.
+
+[source,java]
+----
+var pool = Executors.newFixedThreadPool(4);   // <1>
+pool.submit(task);                            // <2>
+pool.shutdown();
+----
+<1> Fixed-size pool, so queue growth is the back-pressure signal.
+<2> Returns a `Future`; ignoring it discards the failure.
+
+== Title above a block
+
+[source,java]
+.Thread-safe lazy initialisation
+----
+private volatile Config config;
+
+Config get() {
+    var local = config;
+    if (local == null) {
+        synchronized (this) {
+            local = config;
+            if (local == null) config = local = load();
+        }
+    }
+    return local;
+}
+----
+
+== Other languages
+
+The bundled highlighter covers roughly 37 languages, including Java, Kotlin,
+Go, Rust, Python, TypeScript, SQL, YAML, JSON, XML, Bash, PowerShell and
+Dockerfile.
+
+[source,sql]
+----
+SELECT region, count(*) AS allocations
+FROM gc_events
+WHERE collected_at >= now() - interval '1 day'
+GROUP BY region
+ORDER BY allocations DESC;
+----
+
+[source,dockerfile]
+----
+FROM eclipse-temurin:21-jre
+COPY build/libs/app.jar /app/app.jar
+ENTRYPOINT ["java", "-XX:+UseG1GC", "-jar", "/app/app.jar"]
+----
+
+Use `[source,text]` for output or pseudo-code that should not be coloured.
+
+[source,text]
+----
+[GC pause (G1 Evacuation Pause) 512M->128M(1024M), 0.0123456 secs]
+----

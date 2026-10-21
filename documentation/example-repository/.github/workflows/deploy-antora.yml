@@ -20,14 +20,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
       - name: Install Antora
         run: npm install
-      - name: Generate navigation
-        run: python tools/generate_nav.py --content-root .
       - name: Build site
         run: npx antora antora-playbook.yaml
       - name: Configure Pages
