@@ -5,6 +5,7 @@
 ** xref:trees/index.adoc[Trees]
 ** xref:hash-map/index.adoc[Hash Map]
 ** xref:dynamic-programming/index.adoc[Dynamic Programming]
+*** xref:dynamic-programming/fibonacci-series.adoc[Fibonacci Series]
 ** xref:graphs/index.adoc[Graphs]
 ** xref:backtracking/index.adoc[Backtracking]
 ** xref:pattern-printing/index.adoc[Pattern Printing]

@@ -456,11 +456,57 @@
     };
   })();
 
+  // v19: coding articles collapse their solution behind an AsciiDoc [%collapsible] block.
+  // The article only supplies the block title; the language label and line count are read
+  // back off the code itself so authors never hand-maintain them.
+  function enhanceCollapsibleCode(root){
+    var LANG_LABELS={java:'Java',javascript:'JavaScript',js:'JavaScript',typescript:'TypeScript',ts:'TypeScript',
+      python:'Python',py:'Python',sql:'SQL',bash:'Bash',shell:'Shell',sh:'Shell',yaml:'YAML',yml:'YAML',
+      json:'JSON',xml:'XML',html:'HTML',css:'CSS',go:'Go',rust:'Rust',kotlin:'Kotlin',c:'C',cpp:'C++',csharp:'C#'};
+    var blocks=root.querySelectorAll('.article-body.coding-page details');
+    Array.prototype.forEach.call(blocks,function(details){
+      var summary=details.querySelector(':scope > summary');
+      if(!summary||summary.querySelector('.cp-code-meta'))return;
+      var code=details.querySelector('.listingblock code');
+      if(!code)return;
+
+      var meta=document.createElement('span');
+      meta.className='cp-code-meta';
+
+      var lang=(code.getAttribute('data-lang')||'').toLowerCase();
+      if(lang){
+        var label=document.createElement('span');
+        label.className='cp-code-lang';
+        label.textContent=LANG_LABELS[lang]||lang.charAt(0).toUpperCase()+lang.slice(1);
+        meta.appendChild(label);
+      }
+
+      // textContent is read after enhanceCode() has already split the block into
+      // .code-line elements, so fall back to counting those when present.
+      var lineEls=code.querySelectorAll('.code-line');
+      var count=lineEls.length;
+      if(!count){
+        var text=(code.textContent||'').replace(/\n+$/,'');
+        count=text?text.split('\n').length:0;
+      }
+      if(count){
+        var lines=document.createElement('span');
+        lines.className='cp-code-lines';
+        lines.textContent='~ '+count+' lines';
+        meta.appendChild(lines);
+      }
+
+      if(meta.childNodes.length)summary.appendChild(meta);
+    });
+  }
+
   // Everything inside the article that needs JavaScript. Runs on first load and after every in-place page change.
   function enhanceContent(root){
     enhanceImages(root);
     buildToc();
     enhanceCode(root);
+    // After enhanceCode so the line count can use its rendered .code-line elements.
+    enhanceCollapsibleCode(root);
   }
   enhanceContent(document);
 

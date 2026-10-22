@@ -448,3 +448,169 @@
 .spa-progress.is-done { transition: transform .32s ease-out, opacity .4s ease .18s; }
 @media (prefers-reduced-motion: reduce) { .spa-progress { transition: opacity .2s ease; } }
 #article-main [data-spa-focus]:focus, #article-main[data-spa-focus]:focus { outline: none; }
+
+/* ============================================================================
+   v19: coding / problem-solving article layout.
+
+   Activated per page with `:page-role: coding-page`, which default.hbs copies
+   onto .article-body. Everything here is driven by plain AsciiDoc structure —
+   section headings, block roles and native collapsible blocks — so articles
+   never contain HTML:
+
+     == Question            -> auto-numbered step badge (CSS counter)
+     [.cp-box.cp-question]  -> coloured callout
+     [%collapsible]         -> <details> code card
+     [.cp-io]               -> Input / Output rows
+
+   The step numbers come from a counter, so inserting or reordering a section
+   renumbers the page with no edits to the article.
+   ========================================================================= */
+
+/* --- heading metadata: subtitle + difficulty/tag chips ------------------- */
+/* Generic, not scoped to coding pages: any article can set these. */
+.article-subtitle { color: var(--muted); font-size: 15px; line-height: 1.6; margin: 11px 0 0; max-width: 780px; }
+.article-chips { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 15px 0 0; padding: 0; }
+.article-chips .chip { font-size: 12px; font-weight: 650; line-height: 1.5; padding: 5px 11px; border-radius: 6px; background: #eef2f7; color: #44576d; }
+.article-chips .chip-tag { background: #eef3f8; color: #42566c; }
+.article-chips .chip-difficulty { background: #dbeafe; color: #1c4a8a; }
+/* Listed after .chip-difficulty so the specific rating wins at equal specificity. */
+.article-chips .chip-easy { background: #dcfce7; color: #15632f; }
+.article-chips .chip-medium { background: #dbeafe; color: #1c4a8a; }
+.article-chips .chip-hard { background: #fee2e2; color: #99181c; }
+
+/* --- numbered step headings --------------------------------------------- */
+.article-body.coding-page { counter-reset: cp-step; }
+.article-body.coding-page .sect1 > h2 {
+  counter-increment: cp-step;
+  display: flex; align-items: center; gap: 13px;
+  font-size: 23px; margin: 38px 0 14px; padding-top: 0;
+}
+.article-body.coding-page .sect1:first-of-type > h2 { margin-top: 26px; }
+.article-body.coding-page .sect1 > h2::before {
+  content: counter(cp-step);
+  flex: none; display: grid; place-items: center;
+  width: 31px; height: 31px; border-radius: 50%;
+  background: #2563c9; color: #fff;
+  font-size: 14px; font-weight: 800; letter-spacing: 0;
+}
+/* Asciidoctor's section anchor link must not open a flex gap. */
+.article-body.coding-page .sect1 > h2 > a.anchor { position: absolute; }
+
+/* --- callout boxes ------------------------------------------------------- */
+.article-body.coding-page .cp-box {
+  margin: 0 0 28px; padding: 17px 21px;
+  border: 1px solid var(--line); border-left: 4px solid #9db8d6;
+  border-radius: 10px; background: var(--soft);
+}
+.article-body.coding-page .cp-box > .content > :last-child { margin-bottom: 0; }
+.article-body.coding-page .cp-box ul,
+.article-body.coding-page .cp-box ol { margin: 7px 0 0; }
+.article-body.coding-page .cp-box > .content > p:first-child { margin-top: 0; }
+/* Asciidoctor wraps each list item in <p>, whose 18px bottom margin would space
+   the bullets far wider than the rest of the callout. */
+.article-body.coding-page .cp-box li { margin: 2px 0; }
+.article-body.coding-page .cp-box li > p { margin-bottom: 0; }
+.article-body.coding-page .cp-box li + li { margin-top: 6px; }
+
+/* Variants with an icon tile: the ::before box becomes the first grid cell. */
+.article-body.coding-page .cp-approach,
+.article-body.coding-page .cp-complexity,
+.article-body.coding-page .cp-output {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 16px; align-items: start;
+}
+.article-body.coding-page .cp-approach::before,
+.article-body.coding-page .cp-complexity::before,
+.article-body.coding-page .cp-output::before {
+  content: ""; width: 30px; height: 30px; border-radius: 9px;
+  background-repeat: no-repeat; background-position: center; background-size: 17px 17px;
+}
+
+.article-body.coding-page .cp-question { border-left-color: #2563c9; background: #f4f8fd; }
+.article-body.coding-page .cp-question code:not(pre code) { background: #e4edf8; color: #1c3f63; }
+
+.article-body.coding-page .cp-approach { border-left-color: #16a34a; background: #f3fbf5; }
+.article-body.coding-page .cp-approach::before {
+  background-color: #fef5e0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b45309' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6M10 21h4'/%3E%3Cpath d='M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z'/%3E%3C/svg%3E");
+}
+
+.article-body.coding-page .cp-complexity { border-left-color: #64748b; }
+.article-body.coding-page .cp-complexity::before {
+  background-color: #fdeaea;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23dc2626'%3E%3Crect x='3' y='12' width='4' height='9' rx='1'/%3E%3Crect x='10' y='7' width='4' height='14' rx='1'/%3E%3Crect x='17' y='3' width='4' height='18' rx='1'/%3E%3C/svg%3E");
+}
+
+.article-body.coding-page .cp-output { border-left-color: #2563c9; }
+.article-body.coding-page .cp-output::before {
+  background-color: #1f2d3f;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 8l3.5 3.5L6 15'/%3E%3Cpath d='M13 15h5'/%3E%3C/svg%3E");
+}
+
+/* --- Input / Output rows ------------------------------------------------- */
+.article-body.coding-page .cp-io dl {
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  gap: 11px 16px; align-items: center; margin: 0;
+}
+.article-body.coding-page .cp-io dt { font-size: 13px; font-weight: 750; color: #33465c; }
+.article-body.coding-page .cp-io dd { margin: 0; min-width: 0; }
+.article-body.coding-page .cp-io dd p { margin: 0; }
+.article-body.coding-page .cp-io dd code:not(pre code) {
+  display: block; background: #fff; border: 1px solid #d9e2ec; border-radius: 7px;
+  padding: 9px 13px; font-size: 13px; color: #24405c; overflow-x: auto;
+}
+
+/* --- collapsible code card ---------------------------------------------- */
+/* Produced by AsciiDoc `[%collapsible]`, which Asciidoctor renders as
+   <details><summary class="title">…</summary><div class="content">…</div></details>. */
+.article-body.coding-page details {
+  margin: 0 0 28px; border: 1px solid #cfdbe9; border-radius: 10px;
+  background: #f4f8fd; overflow: hidden;
+}
+.article-body.coding-page details > summary.title {
+  display: flex; align-items: center; gap: 13px;
+  margin: 0; padding: 15px 19px; cursor: pointer;
+  font-size: 15px; font-weight: 700; font-style: normal; color: #1d3756;
+  list-style: none;
+}
+.article-body.coding-page details > summary.title::-webkit-details-marker { display: none; }
+.article-body.coding-page details > summary.title::before {
+  content: ""; flex: none; width: 18px; height: 18px;
+  background-repeat: no-repeat; background-position: center; background-size: 16px 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232d4a6b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E");
+  transition: transform .18s ease;
+}
+.article-body.coding-page details[open] > summary.title::before { transform: rotate(90deg); }
+.article-body.coding-page details > summary.title:hover { background: #eaf2fb; }
+.article-body.coding-page details > .content { padding: 0 15px 6px; }
+/* The code card already carries its own dark surface and toolbar. */
+.article-body.coding-page details > .content > .listingblock { margin-bottom: 14px; }
+
+/* Language + line-count badges that site.js appends to the summary. */
+.article-body.coding-page .cp-code-meta {
+  margin-left: auto; display: flex; align-items: center; gap: 11px;
+  font-size: 12px; font-weight: 600; color: #5b7694;
+}
+.article-body.coding-page .cp-code-lang { display: flex; align-items: center; gap: 6px; }
+.article-body.coding-page .cp-code-lang::before {
+  content: ""; width: 15px; height: 15px;
+  background-repeat: no-repeat; background-position: center; background-size: 15px 15px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235b7694' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18l-6-6 6-6'/%3E%3Cpath d='M15 6l6 6-6 6'/%3E%3C/svg%3E");
+}
+.article-body.coding-page .cp-code-lines {
+  background: #e3ecf6; color: #42607f; border-radius: 20px; padding: 4px 11px; white-space: nowrap;
+}
+
+@media (max-width: 750px) {
+  .article-body.coding-page .sect1 > h2 { font-size: 20px; gap: 10px; }
+  .article-body.coding-page .sect1 > h2::before { width: 27px; height: 27px; font-size: 13px; }
+  .article-body.coding-page .cp-box { padding: 15px 16px; }
+  .article-body.coding-page .cp-approach,
+  .article-body.coding-page .cp-complexity,
+  .article-body.coding-page .cp-output { gap: 12px; grid-template-columns: 26px minmax(0, 1fr); }
+  .article-body.coding-page .cp-io dl { grid-template-columns: minmax(0, 1fr); gap: 5px; align-items: stretch; }
+  .article-body.coding-page details > summary.title { flex-wrap: wrap; padding: 13px 15px; font-size: 14px; }
+  .article-body.coding-page .cp-code-meta { margin-left: 31px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .article-body.coding-page details > summary.title::before { transition: none; }
+}

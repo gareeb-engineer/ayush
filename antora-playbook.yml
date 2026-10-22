@@ -12,7 +12,9 @@ content:
       start_path: ./gareeb-engineer/
 ui:
   bundle:
-    url: ./ui/engineering-portfolio-ui-header-fragment-fix.zip
+    # Relative UI bundle paths are resolved against the directory holding this
+    # playbook, not the current working directory.
+    url: ./gareeb-engineer/ui/engineering-portfolio-ui-header-fragment-fix.zip
     snapshot: true
 
 asciidoc:

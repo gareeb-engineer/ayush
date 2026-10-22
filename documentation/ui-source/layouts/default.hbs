@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>{{#if page.title}}{{{page.title}}} · {{/if}}{{site.title}}</title>
   {{#if page.description}}<meta name="description" content="{{page.description}}">{{/if}}
-  <link rel="stylesheet" href="{{uiRootPath}}/css/site.css?v=18">
+  <link rel="stylesheet" href="{{uiRootPath}}/css/site.css?v=19">
 </head>
 <body class="docs-page">
   <a class="skip-link" href="#article-main">Skip to content</a>
@@ -48,8 +48,23 @@
       <nav class="breadcrumbs" aria-label="Breadcrumb"><a href="{{{relativize site.homeUrl}}}">Home</a>{{#each page.breadcrumbs}}<span aria-hidden="true">/</span>{{#if url}}<a href="{{{relativize url}}}">{{{content}}}</a>{{else}}<span>{{{content}}}</span>{{/if}}{{/each}}</nav>
       {{/if}}
       {{/unless}}
-      <article class="article-body">
-        {{#if page.title}}<header class="article-header{{#if page.attributes.centered}} article-header--centered{{/if}}"><h1>{{{page.title}}}</h1>{{#if page.attributes.author}}<p class="article-byline">{{page.attributes.author}}</p>{{/if}}</header>{{/if}}
+      {{!-- :page-role: adds classes to the article, e.g. `coding-page` for the
+            numbered problem-solving layout. Keeps presentation out of the AsciiDoc. --}}
+      <article class="article-body{{#if page.attributes.role}} {{page.attributes.role}}{{/if}}">
+        {{#if page.title}}
+        <header class="article-header{{#if page.attributes.centered}} article-header--centered{{/if}}">
+          <h1>{{{page.title}}}</h1>
+          {{#if page.attributes.author}}<p class="article-byline">{{page.attributes.author}}</p>{{/if}}
+          {{!-- :page-subtitle: one-line summary shown under the heading. --}}
+          {{#if page.attributes.subtitle}}<p class="article-subtitle">{{{page.attributes.subtitle}}}</p>{{/if}}
+          {{!-- :page-difficulty: and :page-tags: render as the chip row. --}}
+          {{#with (chipList page.attributes.difficulty page.attributes.tags)}}
+          <ul class="article-chips">
+            {{#each this}}<li class="chip {{cls}}">{{label}}</li>{{/each}}
+          </ul>
+          {{/with}}
+        </header>
+        {{/if}}
         {{{page.contents}}}
       </article>
       <div class="article-pagination">
@@ -66,6 +81,6 @@
     </aside>
   </div>
   <footer class="docs-footer">© 2026 Ayush Nigam · <a href="{{{relativize site.homeUrl}}}">Home</a></footer>
-  <script src="{{uiRootPath}}/js/site.js?v=13" defer></script>
+  <script src="{{uiRootPath}}/js/site.js?v=14" defer></script>
 </body>
 </html>
